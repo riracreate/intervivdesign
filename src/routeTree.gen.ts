@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as CoachRouteImport } from './routes/coach'
+import { Route as EngagementRouteImport } from './routes/engagement'
 import { Route as GapAnalysisRouteImport } from './routes/gap-analysis'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as LearnRouteImport } from './routes/learn'
@@ -44,6 +45,11 @@ const AuthRoute = AuthRouteImport.update({
 const CoachRoute = CoachRouteImport.update({
   id: '/coach',
   path: '/coach',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EngagementRoute = EngagementRouteImport.update({
+  id: '/engagement',
+  path: '/engagement',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GapAnalysisRoute = GapAnalysisRouteImport.update({
@@ -141,6 +147,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/coach': typeof CoachRoute
+  '/engagement': typeof EngagementRoute
   '/gap-analysis': typeof GapAnalysisRoute
   '/jobs': typeof JobsRoute
   '/learn': typeof LearnRoute
@@ -164,6 +171,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/coach': typeof CoachRoute
+  '/engagement': typeof EngagementRoute
   '/gap-analysis': typeof GapAnalysisRoute
   '/jobs': typeof JobsRoute
   '/learn': typeof LearnRoute
@@ -188,6 +196,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/coach': typeof CoachRoute
+  '/engagement': typeof EngagementRoute
   '/gap-analysis': typeof GapAnalysisRoute
   '/jobs': typeof JobsRoute
   '/learn': typeof LearnRoute
@@ -213,6 +222,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/coach'
+    | '/engagement'
     | '/gap-analysis'
     | '/jobs'
     | '/learn'
@@ -236,6 +246,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/coach'
+    | '/engagement'
     | '/gap-analysis'
     | '/jobs'
     | '/learn'
@@ -259,6 +270,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/coach'
+    | '/engagement'
     | '/gap-analysis'
     | '/jobs'
     | '/learn'
@@ -283,6 +295,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
   CoachRoute: typeof CoachRoute
+  EngagementRoute: typeof EngagementRoute
   GapAnalysisRoute: typeof GapAnalysisRoute
   JobsRoute: typeof JobsRoute
   LearnRoute: typeof LearnRoute
@@ -324,6 +337,13 @@ declare module '@tanstack/react-router' {
       path: '/coach'
       fullPath: '/coach'
       preLoaderRoute: typeof CoachRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/engagement': {
+      id: '/engagement'
+      path: '/engagement'
+      fullPath: '/engagement'
+      preLoaderRoute: typeof EngagementRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/gap-analysis': {
@@ -459,6 +479,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
   CoachRoute: CoachRoute,
+  EngagementRoute: EngagementRoute,
   GapAnalysisRoute: GapAnalysisRoute,
   JobsRoute: JobsRoute,
   LearnRoute: LearnRoute,

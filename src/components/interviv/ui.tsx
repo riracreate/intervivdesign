@@ -147,6 +147,7 @@ const mainNav = [
 ] as const;
 const toolsNav = [
   { to: "/voice", title: "Voice interview", icon: Mic },
+  { to: "/engagement", title: "Engagement analyzer", icon: ChartNoAxesCombined },
   { to: "/resume", title: "Resume extractor", icon: FileText },
   { to: "/problems", title: "Coding & SQL arena", icon: Code2 },
   { to: "/learn", title: "Spaced repetition", icon: GraduationCap },
