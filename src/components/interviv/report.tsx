@@ -3,6 +3,10 @@ import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/lib/interviv/workspace";
 import { Heading, SkillBar, ArrowRight } from "./ui";
+import { RUBRIC_GUIDE, scoreRubric } from "@/lib/interviv/rubric";
+import { analyzeCommunication, paceLabel } from "@/lib/interviv/communication";
+import { encodeReportCard } from "@/lib/interviv/share";
+import { totalXp, trackProgress } from "@/lib/interviv/xp";
 import { toast } from "sonner";
 export function Report({ id }: { id: string }) {
   const { sessions, user, ready, sessionsReady } = useWorkspace();
@@ -66,6 +70,34 @@ export function Report({ id }: { id: string }) {
               }}
             >
               Copy link
+            </Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                const xp = totalXp(sessions);
+                const top = trackProgress(sessions)[0];
+                const code = encodeReportCard({
+                  v: 1,
+                  title: session.title,
+                  score: session.score,
+                  skills: session.skills,
+                  rounds: rounds.length,
+                  date: new Date(session.created_at).toLocaleDateString("en-GB", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  }),
+                  level: xp.level,
+                  xp: xp.xp,
+                  topSkill: top?.skill ?? "—",
+                });
+                await navigator.clipboard.writeText(
+                  `${window.location.origin}/report-card?d=${code}`,
+                );
+                toast.success("Public report card link copied — it carries only this summary.");
+              }}
+            >
+              Share public card
             </Button>
           </div>
         }
@@ -175,6 +207,39 @@ export function Report({ id }: { id: string }) {
                   mastery verification.
                 </p>
               </details>
+              {(() => {
+                const rubric = scoreRubric(r.question, r.answer);
+                const comm = analyzeCommunication({ transcript: r.answer });
+                return (
+                  <details>
+                    <summary>Rubric & communication (overall {rubric.overall}/100)</summary>
+                    {RUBRIC_GUIDE.map((g) => (
+                      <div key={g.key}>
+                        <SkillBar
+                          label={g.label}
+                          value={rubric[g.key] * 10}
+                          note={`${rubric[g.key]}/10`}
+                        />
+                        <p className="tiny text-muted">{g.looksFor}</p>
+                      </div>
+                    ))}
+                    <p className="small mt-3">
+                      Fillers: {comm.fillerCount} ({comm.fillerPer100Words} per 100 words)
+                      {Object.keys(comm.fillerBreakdown).length
+                        ? ` — ${Object.entries(comm.fillerBreakdown)
+                            .map(([k, v]) => `${k} ×${v}`)
+                            .join(", ")}`
+                        : ""}
+                      {" · "}
+                      {comm.words} words · {paceLabel(comm.wordsPerMinute)}
+                    </p>
+                    <p className="tiny text-muted">
+                      Rubric weights are equal (25% each) and fully deterministic. Pace needs answer
+                      timing, so typed rounds show filler analysis only.
+                    </p>
+                  </details>
+                );
+              })()}
             </section>
           ))}
         </div>

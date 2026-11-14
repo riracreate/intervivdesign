@@ -31,6 +31,7 @@ import {
   RotateCcw,
 } from "./ui";
 import { skillScores, Activity } from "./overview";
+import { Dashboards } from "./dashboards";
 import { toast } from "sonner";
 import {
   ResponsiveContainer,
@@ -992,6 +993,9 @@ export function Progress() {
           )}
         </section>
         <Activity />
+      </div>
+      <div className="mt-6">
+        <Dashboards />
       </div>
     </>
   );

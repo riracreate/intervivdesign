@@ -23,6 +23,7 @@ import { Route as PracticeRouteImport } from './routes/practice'
 import { Route as ProblemsRouteImport } from './routes/problems'
 import { Route as ProgressRouteImport } from './routes/progress'
 import { Route as RegisterRouteImport } from './routes/register'
+import { Route as ReportCardRouteImport } from './routes/report-card'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as ResourcesRouteImport } from './routes/resources'
 import { Route as ResumeRouteImport } from './routes/resume'
@@ -104,6 +105,11 @@ const RegisterRoute = RegisterRouteImport.update({
   path: '/register',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReportCardRoute = ReportCardRouteImport.update({
+  id: '/report-card',
+  path: '/report-card',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
@@ -170,6 +176,7 @@ export interface FileRoutesByFullPath {
   '/problems': typeof ProblemsRoute
   '/progress': typeof ProgressRoute
   '/register': typeof RegisterRoute
+  '/report-card': typeof ReportCardRoute
   '/reset-password': typeof ResetPasswordRoute
   '/resources': typeof ResourcesRoute
   '/resume': typeof ResumeRoute
@@ -196,6 +203,7 @@ export interface FileRoutesByTo {
   '/problems': typeof ProblemsRoute
   '/progress': typeof ProgressRoute
   '/register': typeof RegisterRoute
+  '/report-card': typeof ReportCardRoute
   '/reset-password': typeof ResetPasswordRoute
   '/resources': typeof ResourcesRoute
   '/resume': typeof ResumeRoute
@@ -223,6 +231,7 @@ export interface FileRoutesById {
   '/problems': typeof ProblemsRoute
   '/progress': typeof ProgressRoute
   '/register': typeof RegisterRoute
+  '/report-card': typeof ReportCardRoute
   '/reset-password': typeof ResetPasswordRoute
   '/resources': typeof ResourcesRoute
   '/resume': typeof ResumeRoute
@@ -251,6 +260,7 @@ export interface FileRouteTypes {
     | '/problems'
     | '/progress'
     | '/register'
+    | '/report-card'
     | '/reset-password'
     | '/resources'
     | '/resume'
@@ -277,6 +287,7 @@ export interface FileRouteTypes {
     | '/problems'
     | '/progress'
     | '/register'
+    | '/report-card'
     | '/reset-password'
     | '/resources'
     | '/resume'
@@ -303,6 +314,7 @@ export interface FileRouteTypes {
     | '/problems'
     | '/progress'
     | '/register'
+    | '/report-card'
     | '/reset-password'
     | '/resources'
     | '/resume'
@@ -330,6 +342,7 @@ export interface RootRouteChildren {
   ProblemsRoute: typeof ProblemsRoute
   ProgressRoute: typeof ProgressRoute
   RegisterRoute: typeof RegisterRoute
+  ReportCardRoute: typeof ReportCardRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   ResourcesRoute: typeof ResourcesRoute
   ResumeRoute: typeof ResumeRoute
@@ -442,6 +455,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RegisterRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/report-card': {
+      id: '/report-card'
+      path: '/report-card'
+      fullPath: '/report-card'
+      preLoaderRoute: typeof ReportCardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reset-password': {
       id: '/reset-password'
       path: '/reset-password'
@@ -530,6 +550,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProblemsRoute: ProblemsRoute,
   ProgressRoute: ProgressRoute,
   RegisterRoute: RegisterRoute,
+  ReportCardRoute: ReportCardRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   ResourcesRoute: ResourcesRoute,
   ResumeRoute: ResumeRoute,
