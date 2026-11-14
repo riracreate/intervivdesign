@@ -121,6 +121,9 @@ export function Overview() {
   const hasCompletedSession = sessions.some((s) => s.status === "complete");
   const { due } = partitionReviews(getEffectiveReviewSchedule(data.reviewSchedule));
   const solvedCount = data.solvedProblems?.length ?? 0;
+  const dueToday = Object.values(data.spaced ?? {})
+    .filter((s) => new Date(s.nextDue).getTime() <= new Date().setHours(23, 59, 59, 999))
+    .sort((a, b) => a.nextDue.localeCompare(b.nextDue));
   const date = new Date().toLocaleDateString("en-GB", {
     weekday: "long",
     day: "numeric",
@@ -344,6 +347,33 @@ export function Overview() {
                 </span>
               </Link>
             </div>
+          </section>
+          <section aria-labelledby="due-today-title">
+            <div className="section-title">
+              <h2 id="due-today-title">
+                Due today{dueToday.length ? ` (${dueToday.length})` : ""}
+              </h2>
+              <Link to="/adaptive" className="text-link">
+                Adaptive learning <ArrowRight />
+              </Link>
+            </div>
+            {dueToday.length ? (
+              <div className="chip-group">
+                {dueToday.slice(0, 6).map((s) => (
+                  <span className="pill" key={s.topic}>
+                    {s.topic} · due{" "}
+                    {new Date(s.nextDue).toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                    })}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="small text-muted">
+                No reviews due. Your SM-2 schedule will appear here after you grade a topic.
+              </p>
+            )}
           </section>
           <Activity />
         </div>

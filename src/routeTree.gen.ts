@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdaptiveRouteImport } from './routes/adaptive'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AvatarRouteImport } from './routes/avatar'
 import { Route as CoachRouteImport } from './routes/coach'
@@ -36,6 +37,11 @@ import { Route as VoicePlaybackSessionIdRouteImport } from './routes/voice-playb
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdaptiveRoute = AdaptiveRouteImport.update({
+  id: '/adaptive',
+  path: '/adaptive',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -151,6 +157,7 @@ const VoicePlaybackSessionIdRoute = VoicePlaybackSessionIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/adaptive': typeof AdaptiveRoute
   '/auth': typeof AuthRoute
   '/avatar': typeof AvatarRoute
   '/coach': typeof CoachRoute
@@ -176,6 +183,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/adaptive': typeof AdaptiveRoute
   '/auth': typeof AuthRoute
   '/avatar': typeof AvatarRoute
   '/coach': typeof CoachRoute
@@ -202,6 +210,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/adaptive': typeof AdaptiveRoute
   '/auth': typeof AuthRoute
   '/avatar': typeof AvatarRoute
   '/coach': typeof CoachRoute
@@ -229,6 +238,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/adaptive'
     | '/auth'
     | '/avatar'
     | '/coach'
@@ -254,6 +264,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/adaptive'
     | '/auth'
     | '/avatar'
     | '/coach'
@@ -279,6 +290,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/adaptive'
     | '/auth'
     | '/avatar'
     | '/coach'
@@ -305,6 +317,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdaptiveRoute: typeof AdaptiveRoute
   AuthRoute: typeof AuthRoute
   AvatarRoute: typeof AvatarRoute
   CoachRoute: typeof CoachRoute
@@ -336,6 +349,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/adaptive': {
+      id: '/adaptive'
+      path: '/adaptive'
+      fullPath: '/adaptive'
+      preLoaderRoute: typeof AdaptiveRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -497,6 +517,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdaptiveRoute: AdaptiveRoute,
   AuthRoute: AuthRoute,
   AvatarRoute: AvatarRoute,
   CoachRoute: CoachRoute,

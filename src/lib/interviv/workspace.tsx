@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import type { Question } from "./data";
 import type { ExtractedResume } from "./resume-extractor";
-import type { ReviewEntry } from "./spaced-repetition";
+import type { ReviewEntry, SpacedState } from "./spaced-repetition";
 export type Result = ReturnType<typeof import("./data").evaluate>;
 export type Round = {
   question: Question;
@@ -44,6 +44,8 @@ export type WorkspaceData = {
   reviewSchedule?: ReviewEntry[];
   solvedProblems?: string[];
   completedResources?: string[];
+  /** SM-2 schedule per topic (Phase 4). Optional: older saved data lacks it. */
+  spaced?: Record<string, SpacedState>;
 };
 const initial: WorkspaceData = {
   company: "Google",
