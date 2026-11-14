@@ -29,8 +29,10 @@ export function Coach() {
       const result = await ask({ data: { message, role: data.role, hours: data.weeklyHours } });
       await update({
         chat: [...data.chat, { role: "You", text: message }, { role: "Coach", text: result.text }],
+        coachPlan: result.plan,
       });
       setInput("");
+      toast.success("Your plan is ready and synced to your roadmap.");
     } catch (e) {
       toast.error(
         e instanceof Error ? e.message : "Your coach is unavailable. Your message is still here.",

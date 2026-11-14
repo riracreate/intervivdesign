@@ -1,8 +1,22 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/lib/interviv/workspace";
-import { problems, resources, skills, companies, gapSeverity } from "@/lib/interviv/data";
+import { resources, companies, gapSeverity, questions } from "@/lib/interviv/data";
+import {
+  codingChallenges,
+  gradeSqlRows,
+  runJavaScriptChallenge,
+  sqlChallenges,
+  type CodeExecutionResult,
+} from "@/lib/interviv/code-runner";
+import {
+  formatRelativeReview,
+  getEffectiveReviewSchedule,
+  partitionReviews,
+  scheduleReviewItem,
+  type ReviewEntry,
+} from "@/lib/interviv/spaced-repetition";
 import {
   Heading,
   Icon,
@@ -13,7 +27,8 @@ import {
   Target,
   AuthPrompt,
   Check,
-  Plus,
+  Play,
+  RotateCcw,
 } from "./ui";
 import { skillScores, Activity } from "./overview";
 import { toast } from "sonner";
@@ -26,121 +41,388 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
+
 export function Problems() {
   const { data, update, user } = useWorkspace();
+  const [arenaMode, setArenaMode] = useState<"coding" | "sql">("coding");
   const [search, setSearch] = useState("");
   const [difficulty, setDifficulty] = useState("All");
   const [bookmarked, setBookmarked] = useState(false);
-  const [selected, setSelected] = useState(problems[0]);
-  if (!selected) return null;
-  const list = problems.filter(
+  const [selected, setSelected] = useState(codingChallenges[0]);
+  const [codeByProblem, setCodeByProblem] = useState<Record<string, string>>({});
+  const [execResult, setExecResult] = useState<CodeExecutionResult | null>(null);
+
+  const [selectedSql, setSelectedSql] = useState(sqlChallenges[0]);
+  const [sqlInput, setSqlInput] = useState(sqlChallenges[0]?.starterSql ?? "");
+  const [sqlRows, setSqlRows] = useState<Record<string, unknown>[]>([]);
+  const [sqlVerdict, setSqlVerdict] = useState<{ passed: boolean; feedback: string } | null>(null);
+
+  useEffect(() => {
+    setExecResult(null);
+  }, [selected?.id]);
+
+  if (!selected || !selectedSql) return null;
+
+  const list = codingChallenges.filter(
     (p) =>
       (p.title + " " + p.topics.join(" ")).toLowerCase().includes(search.toLowerCase()) &&
       (difficulty === "All" || p.difficulty === difficulty) &&
       (!bookmarked || data.bookmarks.includes(p.id)),
   );
+  const currentCode = codeByProblem[selected.id] ?? selected.code;
+  const solvedList = data.solvedProblems ?? [];
+
+  async function handleRunCode() {
+    if (!selected) return;
+    const result = runJavaScriptChallenge(selected, currentCode);
+    setExecResult(result);
+    if (result.ok) {
+      if (!solvedList.includes(selected.id)) {
+        await update({ solvedProblems: [...solvedList, selected.id] });
+      }
+      toast.success(`All ${result.totalCount} test cases passed.`);
+    } else if (result.compileError) {
+      toast.error("Syntax or runtime error — check details below.");
+    } else {
+      toast.info(`${result.passedCount} of ${result.totalCount} test cases passed.`);
+    }
+  }
+
+  async function handleRunSql() {
+    if (!selectedSql) return;
+    try {
+      const { default: alasql } = await import("alasql");
+      const result = alasql(sqlInput, [selectedSql.rows]);
+      const rows = Array.isArray(result) ? (result as Record<string, unknown>[]) : [];
+      setSqlRows(rows);
+      const verdict = gradeSqlRows(rows, selectedSql.expectedRows, selectedSql.orderSensitive);
+      setSqlVerdict(verdict);
+      if (verdict.passed) {
+        if (!solvedList.includes(selectedSql.id)) {
+          await update({ solvedProblems: [...solvedList, selectedSql.id] });
+        }
+        toast.success("SQL query matched expected output.");
+      } else {
+        toast.info(verdict.feedback);
+      }
+    } catch (e) {
+      setSqlVerdict({
+        passed: false,
+        feedback: e instanceof Error ? e.message : "SQL syntax error.",
+      });
+      toast.error(e instanceof Error ? e.message : "SQL query failed.");
+    }
+  }
+
   return (
     <>
       <Heading
-        eyebrow="A little challenge. A little growth."
-        title="Your coding arena."
-        subtitle="Good thinking starts with one problem."
+        eyebrow="Interactive Coding & SQL Arena"
+        title="Write, run, and verify your solutions."
+        subtitle="Test JavaScript solutions against visible cases and execute live SQL queries in your browser."
+        action={
+          <div className="tabs-row" style={{ marginBottom: 0 }}>
+            <Button
+              variant={arenaMode === "coding" ? "secondary" : "outline"}
+              onClick={() => setArenaMode("coding")}
+            >
+              Coding challenges ({codingChallenges.length})
+            </Button>
+            <Button
+              variant={arenaMode === "sql" ? "secondary" : "outline"}
+              onClick={() => setArenaMode("sql")}
+            >
+              SQL sandbox ({sqlChallenges.length})
+            </Button>
+          </div>
+        }
       />
-      <div className="notice warning">
-        Code execution is unavailable. Browse problems and save solutions as unscored drafts.
-      </div>
-      <div className="filters">
-        <input
-          placeholder="Search problems or topics…"
-          aria-label="Search problems"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select
-          aria-label="Difficulty"
-          value={difficulty}
-          onChange={(e) => setDifficulty(e.target.value)}
-        >
-          {["All", "Easy", "Medium", "Hard"].map((d) => (
-            <option key={d}>{d}</option>
-          ))}
-        </select>
-        <Button
-          variant={bookmarked ? "secondary" : "outline"}
-          onClick={() => setBookmarked(!bookmarked)}
-        >
-          <Bookmark /> Bookmarked
-        </Button>
-      </div>
-      <div className="two-column">
-        <section className="panel">
-          <p className="tiny text-muted">
-            {list.length} of {problems.length} problems
-          </p>
-          {list.map((p) => (
-            <div className="problem-row" key={p.id}>
-              <Button variant="ghost" className="problem-select" onClick={() => setSelected(p)}>
-                <div>
-                  <strong>{p.title}</strong>
-                  <small>
-                    {p.difficulty} · {p.topics.join(" · ")}
-                  </small>
+
+      {arenaMode === "coding" ? (
+        <>
+          <div className="filters">
+            <input
+              placeholder="Search problems or topics…"
+              aria-label="Search problems"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <select
+              aria-label="Difficulty"
+              value={difficulty}
+              onChange={(e) => setDifficulty(e.target.value)}
+            >
+              {["All", "Easy", "Medium", "Hard"].map((d) => (
+                <option key={d}>{d}</option>
+              ))}
+            </select>
+            <Button
+              variant={bookmarked ? "secondary" : "outline"}
+              onClick={() => setBookmarked(!bookmarked)}
+            >
+              <Bookmark /> Bookmarked
+            </Button>
+          </div>
+
+          <div className="arena-layout">
+            <section className="panel">
+              <div className="row between mb-3">
+                <span className="meta-line">
+                  {list.length} of {codingChallenges.length} problems
+                </span>
+                <span className="meta-line">
+                  {solvedList.filter((id) => codingChallenges.some((c) => c.id === id)).length}{" "}
+                  solved
+                </span>
+              </div>
+              {list.map((p) => {
+                const isSelected = p.id === selected.id;
+                const isSolved = solvedList.includes(p.id);
+                return (
+                  <div className={`problem-row ${isSelected ? "active-row" : ""}`} key={p.id}>
+                    <Button
+                      variant="ghost"
+                      className="problem-select"
+                      onClick={() => setSelected(p)}
+                    >
+                      <div>
+                        <strong>
+                          {p.title} {isSolved ? "✓" : ""}
+                        </strong>
+                        <small>
+                          {p.difficulty} · {p.topics.join(" · ")}
+                        </small>
+                      </div>
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`Bookmark ${p.title}`}
+                      title="Bookmark problem"
+                      onClick={async () => {
+                        if (!user) {
+                          toast.info("Sign in to save bookmarks.");
+                          return;
+                        }
+                        await update({
+                          bookmarks: data.bookmarks.includes(p.id)
+                            ? data.bookmarks.filter((x) => x !== p.id)
+                            : [...data.bookmarks, p.id],
+                        });
+                      }}
+                    >
+                      <Bookmark fill={data.bookmarks.includes(p.id) ? "currentColor" : "none"} />
+                    </Button>
+                  </div>
+                );
+              })}
+              {!list.length && <div className="empty">No problems match your filters.</div>}
+            </section>
+
+            <section className="panel stack">
+              <div className="row between wrap">
+                <span className="meta-line">
+                  {selected.difficulty} · {selected.topics.join(" · ")} · {selected.complexity}
+                </span>
+                {solvedList.includes(selected.id) && <span className="pill">Solved</span>}
+              </div>
+              <h2>{selected.title}</h2>
+              <p className="small">{selected.statement}</p>
+              <pre className="code-block">{selected.example}</pre>
+
+              <label>
+                JavaScript solution ({selected.fnName})
+                <textarea
+                  className="code-editor"
+                  aria-label="JavaScript solution editor"
+                  value={currentCode}
+                  onChange={(e) =>
+                    setCodeByProblem((prev) => ({ ...prev, [selected.id]: e.target.value }))
+                  }
+                />
+              </label>
+
+              <div className="row wrap between">
+                <div className="row wrap">
+                  <Button onClick={handleRunCode}>
+                    <Play size={15} /> Run tests ({selected.tests.length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setCodeByProblem((prev) => ({ ...prev, [selected.id]: selected.code }));
+                      setExecResult(null);
+                    }}
+                  >
+                    <RotateCcw size={15} /> Reset starter
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setCodeByProblem((prev) => ({ ...prev, [selected.id]: selected.solution }));
+                      setExecResult(null);
+                    }}
+                  >
+                    Load reference
+                  </Button>
                 </div>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/practice" search={{ mode: "coding" }}>
+                    Timed coding round <ArrowRight />
+                  </Link>
+                </Button>
+              </div>
+
+              <details>
+                <summary className="small">Need a hint?</summary>
+                <p className="small mt-2 text-muted">{selected.hint}</p>
+              </details>
+
+              {execResult && (
+                <div className="stack">
+                  {execResult.compileError ? (
+                    <div className="notice warning">{execResult.compileError}</div>
+                  ) : (
+                    <>
+                      <div
+                        className={`notice ${execResult.ok ? "" : "warning"}`}
+                        style={{ marginBottom: 0 }}
+                      >
+                        {execResult.passedCount} / {execResult.totalCount} test cases passed
+                      </div>
+                      <table className="test-table">
+                        <thead>
+                          <tr>
+                            <th>Test case</th>
+                            <th>Expected</th>
+                            <th>Actual</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {execResult.results.map((r) => (
+                            <tr key={r.id}>
+                              <td>{r.label}</td>
+                              <td>
+                                <code>{JSON.stringify(r.expected)}</code>
+                              </td>
+                              <td>
+                                <code>{r.error ? r.error : JSON.stringify(r.actual)}</code>
+                              </td>
+                              <td>
+                                <span className={`test-status ${r.passed ? "pass" : "fail"}`}>
+                                  {r.passed ? `PASS (${r.durationMs}ms)` : "FAIL"}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
+                  {execResult.logs.length > 0 && (
+                    <pre className="code-block">
+                      Console output:{"\n"}
+                      {execResult.logs.join("\n")}
+                    </pre>
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
+        </>
+      ) : (
+        <div className="two-column">
+          <section className="panel">
+            <div className="meta-line mb-3">{sqlChallenges.length} SQL queries</div>
+            {sqlChallenges.map((c) => (
+              <div
+                key={c.id}
+                className={`problem-row ${c.id === selectedSql.id ? "active-row" : ""}`}
+              >
+                <Button
+                  variant="ghost"
+                  className="problem-select"
+                  onClick={() => {
+                    setSelectedSql(c);
+                    setSqlInput(c.starterSql);
+                    setSqlRows([]);
+                    setSqlVerdict(null);
+                  }}
+                >
+                  <div>
+                    <strong>
+                      {c.title} {solvedList.includes(c.id) ? "✓" : ""}
+                    </strong>
+                    <small>{c.difficulty} · In-browser AlaSQL</small>
+                  </div>
+                </Button>
+              </div>
+            ))}
+          </section>
+
+          <section className="panel stack">
+            <div className="meta-line">Schema: {selectedSql.schema}</div>
+            <h2>{selectedSql.title}</h2>
+            <p className="small">{selectedSql.prompt}</p>
+            <pre className="code-block">{JSON.stringify(selectedSql.rows, null, 2)}</pre>
+            <label>
+              SQL Query (use <code>FROM ?</code> for the active table)
+              <textarea
+                className="code-editor"
+                style={{ minHeight: 140 }}
+                value={sqlInput}
+                onChange={(e) => setSqlInput(e.target.value)}
+              />
+            </label>
+            <div className="row wrap">
+              <Button onClick={handleRunSql}>
+                <Play size={15} /> Run & grade SQL
               </Button>
               <Button
-                size="icon"
-                variant="ghost"
-                aria-label={`Bookmark ${p.title}`}
-                title="Bookmark problem"
-                onClick={async () => {
-                  if (!user) {
-                    toast.info("Sign in to save bookmarks.");
-                    return;
-                  }
-                  await update({
-                    bookmarks: data.bookmarks.includes(p.id)
-                      ? data.bookmarks.filter((x) => x !== p.id)
-                      : [...data.bookmarks, p.id],
-                  });
+                variant="outline"
+                onClick={() => {
+                  setSqlInput(selectedSql.starterSql);
+                  setSqlRows([]);
+                  setSqlVerdict(null);
                 }}
               >
-                <Bookmark fill={data.bookmarks.includes(p.id) ? "currentColor" : "none"} />
+                Reset query
               </Button>
             </div>
-          ))}
-          {!list.length && <div className="empty">No problems match your filters.</div>}
-        </section>
-        <section className="panel stack">
-          <span className="pill">{selected.difficulty}</span>
-          <h2>{selected.title}</h2>
-          <p className="small">{selected.statement}</p>
-          <h3>Example</h3>
-          <pre className="code-block">{selected.example}</pre>
-          <h3>Starter code</h3>
-          <pre className="code-block">{selected.code}</pre>
-          <details>
-            <summary>Hint</summary>
-            <p className="small mt-3">{selected.hint}</p>
-          </details>
-          <Button asChild>
-            <Link to="/practice" search={{ mode: "coding" }}>
-              Practice this problem <ArrowRight />
-            </Link>
-          </Button>
-        </section>
-      </div>
+            <details>
+              <summary className="small">Hint</summary>
+              <p className="small mt-2 text-muted">{selectedSql.hint}</p>
+            </details>
+            {sqlVerdict && (
+              <div
+                className={`notice ${sqlVerdict.passed ? "" : "warning"}`}
+                style={{ marginBottom: 0 }}
+              >
+                {sqlVerdict.feedback}
+              </div>
+            )}
+            {sqlRows.length > 0 && (
+              <pre className="code-block">{JSON.stringify(sqlRows, null, 2)}</pre>
+            )}
+          </section>
+        </div>
+      )}
     </>
   );
 }
+
 export function Resources() {
+  const { data, update } = useWorkspace();
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
+  const studied = data.completedResources ?? [];
   return (
     <>
       <Heading
-        eyebrow="Stay curious. Keep growing."
-        title="A little learning goes a long way."
-        subtitle="Good resources. Less searching. More understanding."
+        eyebrow="Learning Library"
+        title="Curated references by skill."
+        subtitle="Track what you have studied so your prep stays focused."
       />
       <div className="filters">
         <input
@@ -151,7 +433,18 @@ export function Resources() {
         />
       </div>
       <div className="chip-group mb-6">
-        {["All", "DSA", "System design", "SQL", "Python", "Behavioral", "Resume / ATS"].map((c) => (
+        {[
+          "All",
+          "DSA",
+          "System design",
+          "SQL",
+          "Python",
+          "TypeScript",
+          "React",
+          "Backend",
+          "Behavioral",
+          "Resume / ATS",
+        ].map((c) => (
           <Button
             variant="ghost"
             className={`chip ${filter === c ? "selected" : ""}`}
@@ -169,42 +462,116 @@ export function Resources() {
               (filter === "All" || r[0].toLowerCase() === filter.toLowerCase()) &&
               r.join(" ").toLowerCase().includes(search.toLowerCase()),
           )
-          .map((r) => (
-            <article className="panel resource" key={r[1]}>
-              <span
-                className={`icon-box ${r[0] === "SQL" ? "peach" : r[0] === "Python" ? "lavender" : "sage"}`}
-              >
-                <Icon name="book" />
-              </span>
-              <h3>{r[1]}</h3>
-              <p>
-                {r[0]} · {r[2]}
-              </p>
-              <span className="pill">{r[3]}</span>
-              <div>
-                <Button variant="link" className="text-link p-0" asChild>
-                  <a href={r[4]} target="_blank" rel="noopener noreferrer">
-                    Open resource <ArrowUpRight />
-                  </a>
-                </Button>
-              </div>
-            </article>
-          ))}
+          .map((r) => {
+            const done = studied.includes(r[1]);
+            return (
+              <article className="panel resource stack" key={r[1]}>
+                <div className="row between">
+                  <span
+                    className={`icon-box ${r[0] === "SQL" ? "peach" : r[0] === "Python" ? "lavender" : "sage"}`}
+                  >
+                    <Icon name="book" />
+                  </span>
+                  <span className="meta-line">{r[3]}</span>
+                </div>
+                <h3>{r[1]}</h3>
+                <p>
+                  {r[0]} · {r[2]}
+                </p>
+                <div className="row between wrap">
+                  <Button variant="link" className="text-link p-0" asChild>
+                    <a href={r[4]} target="_blank" rel="noopener noreferrer">
+                      Open guide <ArrowUpRight />
+                    </a>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={done ? "secondary" : "outline"}
+                    onClick={() =>
+                      void update({
+                        completedResources: done
+                          ? studied.filter((x) => x !== r[1])
+                          : [...studied, r[1]],
+                      })
+                    }
+                  >
+                    <Check size={14} /> {done ? "Studied" : "Mark studied"}
+                  </Button>
+                </div>
+              </article>
+            );
+          })}
       </div>
     </>
   );
 }
-const taskSkills = ["DBMS", "DSA", "OOP", "System design", "Python", "Behavioral"];
+
+const roadmapBenchmarks: Record<string, number> = {
+  DSA: 85,
+  DBMS: 80,
+  OOP: 75,
+  "System design": 80,
+  Python: 75,
+  Behavioral: 70,
+  SQL: 80,
+  React: 75,
+  TypeScript: 75,
+  JavaScript: 75,
+};
+const defaultRoadmapSkills = ["DBMS", "DSA", "OOP", "System design", "Python", "Behavioral"];
+
 export function Roadmap() {
-  const { data, update, user } = useWorkspace();
+  const { data, sessions, update, user } = useWorkspace();
   const [days, setDays] = useState(14);
-  const tasks = taskSkills.slice(0, days === 7 ? 3 : days === 14 ? 4 : 6);
-  const finished = tasks.filter((s) => data.completed.includes(`${days}-${s}`)).length;
+  const scores = skillScores(sessions);
+  const coachSkills = data.coachPlan?.focusSkills ?? [];
+  const resumeMissing = data.extractedResume?.jdMatch.missing ?? [];
+  const candidateSkills = Array.from(
+    new Set([...coachSkills, ...resumeMissing, ...defaultRoadmapSkills]),
+  );
+  const rankedTasks = candidateSkills
+    .map((s) => {
+      const observed = scores.find((x) => x.skill === s);
+      const target = roadmapBenchmarks[s] ?? 75;
+      const gap = target - (observed?.score ?? 0);
+      const severity = gapSeverity(gap, observed?.attempts ?? 0);
+      const isCoach = coachSkills.includes(s);
+      const isResumeGap = resumeMissing.includes(s);
+      const priority =
+        (isCoach ? 1000 : 0) +
+        (isResumeGap ? 350 : 0) +
+        (severity === "High"
+          ? 400 + gap
+          : severity === "Medium"
+            ? 300 + gap
+            : severity === "Untested"
+              ? 200
+              : 100 + gap);
+      return {
+        skill: s,
+        observed,
+        target,
+        severity,
+        isCoach,
+        isResumeGap,
+        priority,
+        reason: observed
+          ? `${severity} gap · ${observed.score}% observed vs ${target}% target`
+          : isCoach
+            ? `Coach focus · Untested (${target}% target)`
+            : isResumeGap
+              ? `Resume gap · Missing for ${data.role}`
+              : `Untested · 0/3 measured attempts`,
+      };
+    })
+    .sort((a, b) => b.priority - a.priority);
+  const tasks = rankedTasks.slice(0, days === 7 ? 3 : days === 14 ? 4 : 6);
+  const finished = tasks.filter((t) => data.completed.includes(`${days}-${t.skill}`)).length;
   return (
     <>
       <Heading
-        eyebrow="Your next chapter, one day at a time"
-        title="A path that’s actually yours."
+        eyebrow="Gap-Driven Study Roadmap"
+        title="A study path ordered by your real gaps."
         subtitle={`A ${days}-day plan for ${data.company} · ${data.role}.`}
       />
       {!user && <AuthPrompt />}
@@ -221,73 +588,85 @@ export function Roadmap() {
             </Button>
           ))}
         </div>
-        <span className="pill">
-          {data.weeklyHours} hours / week · {finished}/{tasks.length} completed
+        <span className="meta-line">
+          {data.weeklyHours} hrs/week · {finished}/{tasks.length} milestones complete
         </span>
       </div>
       <div className="two-column">
         <section>
           <div className="section-title">
-            <h2>Your next small steps</h2>
-            <span className="tiny text-muted">Plan v1</span>
+            <h2>Prioritized milestones</h2>
+            <span className="meta-line">
+              {scores.length || coachSkills.length || resumeMissing.length
+                ? "Ordered by skill & resume gaps"
+                : "Starter plan"}
+            </span>
           </div>
-          {tasks.map((s, i) => (
-            <div className="timeline-row" key={s}>
-              <span className="step-number">0{i + 1}</span>
-              <div className="full">
-                <span className="pill">
-                  Days {Math.floor((i * days) / tasks.length) + 1}–
-                  {Math.floor(((i + 1) * days) / tasks.length)}
-                </span>
-                <h3 className="mt-3">
-                  {
-                    [
-                      "Build a strong foundation.",
-                      "Put your thinking into practice.",
-                      "Connect the dots.",
-                      "See the bigger picture.",
-                      "Go a little deeper.",
-                      "Tell your story.",
-                    ][i]
-                  }
-                </h3>
-                <p>
-                  Focus on {s}. Review one core concept, practice a focused question, and reflect on
-                  the trade-off.
-                </p>
-                <div className="row wrap">
-                  <Button variant="outline" size="sm" asChild>
-                    <Link to="/practice">
-                      Practice {s} <ArrowRight />
-                    </Link>
-                  </Button>
-                  <Button
-                    variant={data.completed.includes(`${days}-${s}`) ? "secondary" : "ghost"}
-                    size="sm"
-                    onClick={async () => {
-                      const key = `${days}-${s}`;
-                      await update({
-                        completed: data.completed.includes(key)
-                          ? data.completed.filter((x) => x !== key)
-                          : [...data.completed, key],
-                      });
-                    }}
-                  >
-                    <Check />
-                    {data.completed.includes(`${days}-${s}`) ? "Completed" : "Mark complete"}
-                  </Button>
+          {tasks.map((t, i) => {
+            const s = t.skill;
+            const key = `${days}-${s}`;
+            const done = data.completed.includes(key);
+            return (
+              <div className="timeline-row" key={s}>
+                <span className="step-number">0{i + 1}</span>
+                <div className="full">
+                  <div className="row wrap">
+                    <span className="meta-line">
+                      Days {Math.floor((i * days) / tasks.length) + 1}–
+                      {Math.floor(((i + 1) * days) / tasks.length)}
+                    </span>
+                    <span className={`pill ${t.severity === "High" || t.isCoach ? "warning" : ""}`}>
+                      {t.reason}
+                    </span>
+                  </div>
+                  <h3 className="mt-3">
+                    {t.severity === "High"
+                      ? `Close your ${s} gap.`
+                      : t.isCoach
+                        ? `Prioritize ${s} from your coach plan.`
+                        : t.isResumeGap
+                          ? `Build ${s} proof for your resume.`
+                          : t.severity === "Untested"
+                            ? `Establish a ${s} baseline.`
+                            : `Sharpen ${s} further.`}
+                  </h3>
+                  <p>
+                    Focus on {s}. Review one core concept, complete a timed or coached round, and
+                    review the trade-offs in your mistakes notebook.
+                  </p>
+                  <div className="row wrap">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to="/practice" search={{ skill: s }}>
+                        Practice {s} <ArrowRight />
+                      </Link>
+                    </Button>
+                    <Button
+                      variant={done ? "secondary" : "ghost"}
+                      size="sm"
+                      onClick={async () => {
+                        await update({
+                          completed: done
+                            ? data.completed.filter((x) => x !== key)
+                            : [...data.completed, key],
+                        });
+                      }}
+                    >
+                      <Check />
+                      {done ? "Completed" : "Mark complete"}
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </section>
         <section className="panel stack">
           <span className="icon-box">
             <Icon name="target" />
           </span>
-          <h2>Make room for progress.</h2>
+          <h2>Weekly study budget</h2>
           <p className="small text-muted">
-            A realistic study budget beats a perfect plan you can’t keep.
+            Adjust hours to keep your weekly commitment sustainable.
           </p>
           <label>
             Weekly study hours: {data.weeklyHours}
@@ -296,13 +675,32 @@ export function Roadmap() {
               min={1}
               max={40}
               value={data.weeklyHours}
-              onChange={(e) => update({ weeklyHours: Number(e.target.value) })}
+              onChange={(e) => void update({ weeklyHours: Number(e.target.value) })}
             />
           </label>
-          <SkillBar label="Plan completion" value={Math.round((finished / tasks.length) * 100)} />
+          <SkillBar
+            label="Plan completion"
+            value={Math.round((finished / Math.max(tasks.length, 1)) * 100)}
+          />
+          {data.coachPlan && (
+            <div className="notice stack">
+              <strong>Synced from your AI coach</strong>
+              <span className="tiny text-muted">{data.coachPlan.summary}</span>
+              <ul className="small stack">
+                {data.coachPlan.tasks.map((task, idx) => (
+                  <li key={idx}>• {task}</li>
+                ))}
+              </ul>
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/practice" search={{ skill: data.coachPlan.focusSkills.join(",") }}>
+                  Practice coach focus <ArrowRight />
+                </Link>
+              </Button>
+            </div>
+          )}
           <Button asChild>
             <Link to="/coach">
-              Shape my plan with my coach <ArrowRight />
+              Shape plan with AI coach <ArrowRight />
             </Link>
           </Button>
         </section>
@@ -310,43 +708,149 @@ export function Roadmap() {
     </>
   );
 }
+
 export function Learn() {
   const { sessions, data, update } = useWorkspace();
+  const [revealedId, setRevealedId] = useState<string | null>(null);
+
   const mistakes = sessions.flatMap((s) =>
     s.rounds.filter((r) => r.result.score < 60).map((r) => ({ ...r, sessionId: s.id })),
   );
+
+  const existingSchedule: ReviewEntry[] = useMemo(
+    () => getEffectiveReviewSchedule(data.reviewSchedule),
+    [data.reviewSchedule],
+  );
+
+  const { due, upcoming } = useMemo(() => partitionReviews(existingSchedule), [existingSchedule]);
+  const weakRetrySkills = Array.from(new Set(mistakes.map((m) => m.question.skill))).slice(0, 3);
+
+  async function recordRecall(entry: ReviewEntry, passed: boolean) {
+    const updatedEntry = scheduleReviewItem(
+      entry,
+      { id: entry.questionId, skill: entry.skill, prompt: entry.prompt, hint: entry.hint },
+      passed ? 85 : 40,
+    );
+    const base = data.reviewSchedule?.length ? data.reviewSchedule : existingSchedule;
+    const nextList = [
+      ...base.filter((x) => x.questionId !== updatedEntry.questionId),
+      updatedEntry,
+    ];
+    await update({ reviewSchedule: nextList });
+    setRevealedId(null);
+    toast.success(
+      passed
+        ? `Scheduled next review (${formatRelativeReview(updatedEntry.nextReviewAt)}).`
+        : "Reset to 1-day review so you can reinforce this concept tomorrow.",
+    );
+  }
+
   return (
     <>
       <Heading
-        eyebrow="Come back a little stronger"
-        title="Turn yesterday’s gaps into tomorrow’s growth."
-        subtitle="Revisit what matters. Keep the lessons, not just the answers."
+        eyebrow="Spaced Repetition & Mistakes Notebook"
+        title="Retention over cramming."
+        subtitle="Active recall reviews follow a 1 → 3 → 7 → 16 → 35 day spacing ladder."
+        action={
+          weakRetrySkills.length > 0 ? (
+            <Button asChild>
+              <Link to="/practice" search={{ skill: weakRetrySkills.join(",") }}>
+                Practice retry set ({weakRetrySkills.join(", ")}) <ArrowRight />
+              </Link>
+            </Button>
+          ) : undefined
+        }
       />
       <div className="metrics">
         <div className="metric">
-          <div className="metric-label">In your notebook</div>
-          <div className="metric-value">{mistakes.length}</div>
-          <p className="metric-note">Questions worth another look</p>
+          <div className="metric-label">Due for review now</div>
+          <div className="metric-value tabular-nums">{due.length}</div>
+          <p className="metric-note">Ready for quick active recall</p>
         </div>
         <div className="metric">
-          <div className="metric-label">Bookmarked problems</div>
-          <div className="metric-value">{data.bookmarks.length}</div>
-          <p className="metric-note">Your personal practice collection</p>
+          <div className="metric-label">Mistakes notebook</div>
+          <div className="metric-value tabular-nums">{mistakes.length}</div>
+          <p className="metric-note">Rounds scored under 60%</p>
         </div>
         <div className="metric">
-          <div className="metric-label">Review rhythm</div>
-          <div className="metric-value">
-            1–35<small> days</small>
-          </div>
-          <p className="metric-note">Build understanding over time</p>
+          <div className="metric-label">Scheduled ahead</div>
+          <div className="metric-value tabular-nums">{upcoming.length}</div>
+          <p className="metric-note">Mastered onto 3–35 day intervals</p>
         </div>
       </div>
+
       <div className="grid-two">
-        <section>
-          <h2 className="mb-5">Your mistakes notebook</h2>
+        <section className="stack">
+          <div className="row between">
+            <h2>Active recall review queue</h2>
+            <span className="meta-line">{due.length} due</span>
+          </div>
+          {due.length ? (
+            due.map((item) => {
+              const isOpen = revealedId === item.questionId;
+              const fullQ = questions.find((q) => q.id === item.questionId);
+              return (
+                <article className="panel stack" key={item.questionId}>
+                  <div className="row between">
+                    <span className="pill">{item.skill}</span>
+                    <span className="meta-line">
+                      Stage {item.stage + 1}/5 · {formatRelativeReview(item.nextReviewAt)}
+                    </span>
+                  </div>
+                  <h3>{item.prompt}</h3>
+                  {!isOpen ? (
+                    <Button variant="outline" onClick={() => setRevealedId(item.questionId)}>
+                      Reveal hint & concepts
+                    </Button>
+                  ) : (
+                    <div className="stack">
+                      <div className="notice" style={{ marginBottom: 0 }}>
+                        <strong>Hint:</strong> {item.hint}
+                        {fullQ && fullQ.concepts.length > 0 && (
+                          <div className="meta-line mt-2">
+                            Key terms to mention: {fullQ.concepts.join(" · ")}
+                          </div>
+                        )}
+                      </div>
+                      <div className="row wrap">
+                        <Button onClick={() => void recordRecall(item, true)}>
+                          <Check size={15} /> Recalled cleanly
+                        </Button>
+                        <Button variant="outline" onClick={() => void recordRecall(item, false)}>
+                          Needs another look (1 day)
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              );
+            })
+          ) : (
+            <div className="panel empty">
+              You are caught up on due reviews. Complete a practice round or check back tomorrow.
+            </div>
+          )}
+
+          {upcoming.length > 0 && (
+            <div className="panel stack">
+              <h3>Upcoming spaced reviews</h3>
+              {upcoming.map((u) => (
+                <div className="row between" key={u.questionId}>
+                  <span className="small">
+                    <strong>{u.skill}</strong> — {u.prompt.slice(0, 64)}…
+                  </span>
+                  <span className="meta-line">{formatRelativeReview(u.nextReviewAt)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="stack">
+          <h2>Your mistakes notebook</h2>
           {mistakes.length ? (
             mistakes.map((r, i) => (
-              <article className="panel stack mb-4" key={i}>
+              <article className="panel stack" key={i}>
                 <div className="row between">
                   <span className="pill">{r.question.skill}</span>
                   <span className="pill warning">
@@ -356,42 +860,42 @@ export function Learn() {
                 <h3>{r.question.prompt}</h3>
                 <p className="small text-muted">{r.result.feedback}</p>
                 <details>
-                  <summary>Hint</summary>
-                  <p className="small mt-3">{r.question.hint}</p>
-                </details>
-                <details>
-                  <summary>Your answer</summary>
-                  <p className="small mt-3">{r.answer || r.question.options?.[r.selected ?? 0]}</p>
+                  <summary className="small">Your answer</summary>
+                  <p className="small mt-2">
+                    {r.answer ||
+                      (typeof r.selected === "number"
+                        ? (r.question.options?.[r.selected] ?? "No answer submitted")
+                        : "No answer submitted")}
+                  </p>
                 </details>
                 <Button variant="outline" asChild>
-                  <Link to="/practice">
-                    Try again <ArrowRight />
+                  <Link to="/practice" search={{ skill: r.question.skill }}>
+                    Retry {r.question.skill} <ArrowRight />
                   </Link>
                 </Button>
               </article>
             ))
           ) : (
-            <div className="panel empty">
-              No missed questions yet. Start a practice session to discover your next focus.
-            </div>
+            <div className="panel empty">No low-scoring rounds recorded yet.</div>
           )}
-        </section>
-        <section>
-          <h2 className="mb-5">Saved for a little later</h2>
-          <div className="panel">
+
+          <div className="panel stack">
+            <h3>Saved problems ({data.bookmarks.length})</h3>
             {data.bookmarks.map((id) => {
-              const p = problems.find((x) => x.id === id);
+              const p = codingChallenges.find((x) => x.id === id);
               return (
                 <div className="problem-row" key={id}>
                   <div>
-                    <h3>{p?.title}</h3>
-                    <span className="tiny text-muted">{p?.difficulty}</span>
+                    <strong>{p?.title ?? id}</strong>
+                    <small>{p?.difficulty}</small>
                   </div>
                   <Button
                     variant="ghost"
                     title="Remove bookmark"
                     size="icon"
-                    onClick={() => update({ bookmarks: data.bookmarks.filter((x) => x !== id) })}
+                    onClick={() =>
+                      void update({ bookmarks: data.bookmarks.filter((x) => x !== id) })
+                    }
                   >
                     ×
                   </Button>
@@ -399,13 +903,13 @@ export function Learn() {
               );
             })}
             {!data.bookmarks.length && (
-              <div className="empty">
-                A problem catch your eye? Bookmark it in the coding arena.
-              </div>
+              <p className="small text-muted">
+                Bookmark problems in the Coding & SQL Arena to see them here.
+              </p>
             )}
-            <Button variant="outline" className="full mt-4" asChild>
+            <Button variant="outline" asChild>
               <Link to="/problems">
-                Explore problems <ArrowRight />
+                Open coding arena <ArrowRight />
               </Link>
             </Button>
           </div>
@@ -414,6 +918,7 @@ export function Learn() {
     </>
   );
 }
+
 export function Progress() {
   const { sessions } = useWorkspace();
   const scores = skillScores(sessions);
@@ -428,13 +933,13 @@ export function Progress() {
   return (
     <>
       <Heading
-        eyebrow="Small steps. Real progress."
-        title="Look how far you’re coming."
-        subtitle="Your progress, grounded in your practice."
+        eyebrow="Performance Analytics"
+        title="Progress grounded in unassisted rounds."
+        subtitle="Track readiness trajectory and per-skill Elo ratings over time."
       />
       <div className="two-column">
         <div className="score-display">
-          <h2>Your role readiness</h2>
+          <h2>Role readiness</h2>
           <strong>{average === null ? "—" : `${average}%`}</strong>
           <p>
             {average === null
@@ -444,8 +949,8 @@ export function Progress() {
         </div>
         <section className="panel">
           <div className="row between">
-            <h2>A little better, session by session.</h2>
-            <span className="pill">{completed.length} completed</span>
+            <h2>Session trend</h2>
+            <span className="meta-line">{completed.length} completed</span>
           </div>
           <div className="chart-box">
             {chart.length ? (
@@ -471,44 +976,67 @@ export function Progress() {
       </div>
       <div className="grid-two mt-6">
         <section className="panel skill-panel">
-          <h2>Your skills, a little clearer.</h2>
-          {["DSA", "DBMS", "OOP", "Python", "System design", "Behavioral"].map((s) => {
-            const x = scores.find((x) => x.skill === s);
-            return (
-              <SkillBar
-                key={s}
-                label={s}
-                value={x?.score ?? 0}
-                note={x ? `${x.score}% · Elo ${x.elo} · ${x.attempts} rounds` : "Not measured"}
-              />
-            );
-          })}
+          <h2>Skill breakdown</h2>
+          {["DSA", "DBMS", "OOP", "Python", "System design", "Behavioral", "React", "SQL"].map(
+            (s) => {
+              const x = scores.find((item) => item.skill === s);
+              return (
+                <SkillBar
+                  key={s}
+                  label={s}
+                  value={x?.score ?? 0}
+                  note={x ? `${x.score}% · Elo ${x.elo} · ${x.attempts} rounds` : "Not measured"}
+                />
+              );
+            },
+          )}
         </section>
         <Activity />
       </div>
     </>
   );
 }
+
 export function GapAnalysis() {
   const { sessions, data } = useWorkspace();
   const scores = skillScores(sessions);
+  const gapSkills = ["DSA", "DBMS", "OOP", "System design", "Python", "Behavioral"];
+  const gapTargets = [85, 80, 75, 80, 75, 70];
+  const rankedGaps = gapSkills
+    .map((s, i) => {
+      const x = scores.find((item) => item.skill === s);
+      const target = gapTargets[i] ?? 75;
+      const gap = target - (x?.score ?? 0);
+      const severity = gapSeverity(gap, x?.attempts ?? 0);
+      const weight =
+        severity === "High"
+          ? 400 + gap
+          : severity === "Medium"
+            ? 300 + gap
+            : severity === "Untested"
+              ? 200
+              : 100 + gap;
+      return { skill: s, observed: x, target, severity, weight };
+    })
+    .sort((a, b) => b.weight - a.weight);
+  const topGapSkill = rankedGaps[0]?.skill ?? "DSA";
   return (
     <>
       <Heading
-        eyebrow="Know what matters next"
-        title="Close the gap. Open the next door."
+        eyebrow="Role Gap Analysis"
+        title="Close the gap to your target role."
         subtitle={`${data.company} · ${data.role} · Curated preparation targets`}
       />
       <div className="notice">
-        Thin evidence is provisional. Three unassisted attempts per skill give a more useful
-        picture.
+        Thin evidence is provisional. Three unassisted attempts per skill establish a reliable
+        signal.
       </div>
       <div className="grid-two">
         <section className="panel">
-          <h2>Your skills vs. your target</h2>
-          {["DSA", "DBMS", "OOP", "System design", "Python", "Behavioral"].map((s, i) => {
-            const x = scores.find((x) => x.skill === s);
-            const target = [85, 80, 75, 80, 75, 70][i] ?? 75;
+          <h2>Observed vs. target benchmark</h2>
+          {gapSkills.map((s, i) => {
+            const x = scores.find((item) => item.skill === s);
+            const target = gapTargets[i] ?? 75;
             return (
               <div key={s} className="mb-6">
                 <SkillBar
@@ -516,29 +1044,34 @@ export function GapAnalysis() {
                   value={x?.score ?? 0}
                   note={x ? `${x.score}% observed` : "Untested"}
                 />
-                <SkillBar label="Preparation target" value={target} />
+                <SkillBar label="Target benchmark" value={target} />
                 <div className="row between mt-2">
                   <span className="pill warning">
                     {gapSeverity(target - (x?.score ?? 0), x?.attempts ?? 0)}
                   </span>
-                  <span className="tiny text-muted">
-                    {(x?.attempts ?? 0) < 3 ? "Provisional · " : ""}
-                    {x?.attempts ?? 0}/3 measured attempts
-                  </span>
+                  <div className="row">
+                    <span className="meta-line">
+                      {(x?.attempts ?? 0) < 3 ? "Provisional · " : ""}
+                      {x?.attempts ?? 0}/3 attempts
+                    </span>
+                    <Link to="/practice" search={{ skill: s }} className="text-link">
+                      Practice <ArrowRight />
+                    </Link>
+                  </div>
                 </div>
               </div>
             );
           })}
         </section>
         <section className="panel stack">
-          <h2>A wider view of your next chapter.</h2>
+          <h2>Company target comparison</h2>
           <p className="small text-muted">
-            Preparation targets are illustrative, not official company hiring rubrics.
+            Illustrative readiness comparisons across target company tracks.
           </p>
           {companies.map((c, i) => (
             <div key={c} className="row between">
               <span>{c}</span>
-              <span className="tiny text-muted">
+              <span className="meta-line">
                 {scores.length
                   ? `${Math.max(0, Math.round(scores.reduce((a, x) => a + x.score, 0) / scores.length) - (i % 3) * 4)}% observed match`
                   : "Not measured"}
@@ -546,8 +1079,8 @@ export function GapAnalysis() {
             </div>
           ))}
           <Button asChild>
-            <Link to="/practice">
-              Practice my next gap <ArrowRight />
+            <Link to="/practice" search={{ skill: topGapSkill }}>
+              Practice {topGapSkill} next <ArrowRight />
             </Link>
           </Button>
         </section>
@@ -555,29 +1088,76 @@ export function GapAnalysis() {
     </>
   );
 }
+
+const curatedRoleBlueprints = [
+  {
+    role: "Software Engineer",
+    company: "Nimbus Commerce",
+    skills: ["DSA", "TypeScript", "System design", "DBMS"],
+    summary:
+      "Full lifecycle product & API engineering with strong algorithmic and data fundamentals.",
+  },
+  {
+    role: "Backend Engineer",
+    company: "Cedar Systems",
+    skills: ["SQL", "DBMS", "System design", "Backend"],
+    summary: "High-throughput services, query indexing, caching, and distributed reliability.",
+  },
+  {
+    role: "Frontend Engineer",
+    company: "Studio North",
+    skills: ["React", "TypeScript", "JavaScript", "Frontend"],
+    summary:
+      "Accessible component architecture, state management, and Core Web Vitals optimization.",
+  },
+  {
+    role: "Full-Stack Engineer",
+    company: "Beacon Labs",
+    skills: ["React", "TypeScript", "SQL", "System design"],
+    summary:
+      "End-to-end delivery across React UIs, relational schemas, and resilient API contracts.",
+  },
+  {
+    role: "Data Engineer",
+    company: "Meridian Data",
+    skills: ["Python", "SQL", "DBMS", "Data Engineering"],
+    summary: "Batch and streaming pipelines, dimensional modeling, and query performance tuning.",
+  },
+  {
+    role: "ML Engineer",
+    company: "Atlas Applied AI",
+    skills: ["Python", "Machine Learning", "AI & LLMs", "System design"],
+    summary:
+      "Model evaluation pipelines, serving latency optimization, and retrieval architectures.",
+  },
+];
+
 export function Jobs() {
   const [search, setSearch] = useState("");
-  const [location, setLocation] = useState("Bengaluru");
-  const { update } = useWorkspace();
-  const jobs: [string, string, string][] = [
-    ["Software Engineer", "Example Labs", "DSA · Python · System design"],
-    ["Backend Engineer", "Sample Systems", "SQL · DBMS · Backend"],
-    ["Frontend Engineer", "Demo Studio", "React · TypeScript · JavaScript"],
-  ];
+  const [location, setLocation] = useState("Bengaluru / Remote");
+  const { update, data, sessions } = useWorkspace();
+  const resumeSkills = new Set((data.extractedResume?.allSkills ?? []).map((s) => s.toLowerCase()));
+  const practicedSkills = new Set(
+    skillScores(sessions)
+      .filter((s) => s.score >= 60)
+      .map((s) => s.skill.toLowerCase()),
+  );
+
   return (
     <>
       <Heading
-        eyebrow="Find a direction. Make it yours."
-        title="Your next role is worth preparing for."
-        subtitle="Explore the shape of a role, then turn it into focused practice."
+        eyebrow="Role Blueprints & Skill Match"
+        title="Target roles matched to your profile."
+        subtitle="Compare curated role requirements against your extracted resume skills and practice history."
       />
       <div className="notice warning">
-        Sample listings — fictional companies. Live job search is not connected.
+        Curated role blueprints for interview preparation — live external job feeds are not
+        connected.
       </div>
       <div className="filters">
         <input
           aria-label="Search jobs"
-          placeholder="Role or skill…"
+          placeholder="Filter by role or skill…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -588,26 +1168,46 @@ export function Jobs() {
         />
       </div>
       <div className="grid-three">
-        {jobs
-          .filter((j) => j.join(" ").toLowerCase().includes(search.toLowerCase()))
-          .map((j) => (
-            <article className="panel stack" key={j[0]}>
-              <span className="icon-box">
-                <Target />
-              </span>
-              <h2>{j[0]}</h2>
-              <p className="small text-muted">
-                {j[1]} · {location}
-              </p>
-              <span className="pill warning">Sample listing</span>
-              <p className="small">{j[2]}</p>
-              <Button variant="outline" asChild>
-                <Link to="/practice" onClick={() => update({ role: j[0], company: j[1] })}>
-                  Prepare for this role <ArrowRight />
-                </Link>
-              </Button>
-            </article>
-          ))}
+        {curatedRoleBlueprints
+          .filter((j) =>
+            (j.role + " " + j.company + " " + j.skills.join(" "))
+              .toLowerCase()
+              .includes(search.toLowerCase()),
+          )
+          .map((j) => {
+            const matched = j.skills.filter(
+              (s) => resumeSkills.has(s.toLowerCase()) || practicedSkills.has(s.toLowerCase()),
+            );
+            const matchPct = Math.round((matched.length / j.skills.length) * 100);
+            const missing = j.skills.filter((s) => !matched.includes(s));
+            return (
+              <article className="panel stack" key={j.role}>
+                <div className="row between">
+                  <span className="icon-box">
+                    <Target />
+                  </span>
+                  <span className="pill">{matchPct}% profile match</span>
+                </div>
+                <div>
+                  <h2>{j.role}</h2>
+                  <p className="meta-line">
+                    {j.company} · {location}
+                  </p>
+                </div>
+                <p className="small text-muted">{j.summary}</p>
+                <div className="meta-line">{j.skills.join(" · ")}</div>
+                <Button variant="outline" asChild>
+                  <Link
+                    to="/practice"
+                    search={{ skill: (missing.length ? missing : j.skills).slice(0, 3).join(",") }}
+                    onClick={() => void update({ role: j.role, company: j.company })}
+                  >
+                    Prepare for {j.role} <ArrowRight />
+                  </Link>
+                </Button>
+              </article>
+            );
+          })}
       </div>
     </>
   );

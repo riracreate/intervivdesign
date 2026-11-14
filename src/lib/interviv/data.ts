@@ -284,6 +284,63 @@ export const questions: Question[] = [
     correct: 1,
     type: "mcq",
   },
+  {
+    id: "react-render",
+    skill: "React",
+    prompt:
+      "Explain why mutating React state in place breaks re-rendering, and how reconciliation updates DOM nodes.",
+    concepts: ["immutab", "reference", "reconcil", "key", "virtual"],
+    hint: "React compares object references with Object.is and relies on stable keys for sibling reconciliation.",
+  },
+  {
+    id: "ts-narrowing",
+    skill: "TypeScript",
+    prompt:
+      "How do discriminated unions and exhaustive checks prevent runtime bugs compared to optional fields on one interface?",
+    concepts: ["discriminat", "union", "narrow", "never", "type"],
+    hint: "A shared literal tag lets the compiler narrow each branch and catch missing cases with never.",
+  },
+  {
+    id: "sql-join-index",
+    skill: "SQL",
+    prompt:
+      "Compare LEFT JOIN filtering in ON versus WHERE, and explain how a composite index supports WHERE a = ? ORDER BY b.",
+    concepts: ["left join", "null", "where", "composite", "order"],
+    hint: "Filtering the right table in WHERE turns a LEFT JOIN into an inner join by dropping NULL rows.",
+  },
+  {
+    id: "cache-invalidation",
+    skill: "System design",
+    prompt:
+      "Walk through cache-aside vs write-through caching. How do you prevent a cache stampede when a hot key TTL expires?",
+    concepts: ["cache-aside", "write-through", "ttl", "stampede", "lock"],
+    hint: "Consider request coalescing, jittered TTLs, or stale-while-revalidate.",
+  },
+  {
+    id: "oa-complexity",
+    skill: "DSA",
+    prompt: "When does quicksort degrade to O(n²), and why does mergesort avoid that worst case?",
+    concepts: [],
+    hint: "Think about pivot selection on already-sorted input vs guaranteed midpoint splits.",
+    options: [
+      "Bad pivot choices produce unbalanced partitions; mergesort always splits in half",
+      "Quicksort uses extra heap memory; mergesort runs strictly in-place",
+      "Quicksort cannot sort negative integers",
+      "Mergesort skips comparisons on duplicate elements",
+    ],
+    correct: 0,
+    type: "mcq",
+  },
+  {
+    id: "oa-http-idempotency",
+    skill: "Backend",
+    prompt: "Which HTTP method is designed to be idempotent when retried after a network timeout?",
+    concepts: [],
+    hint: "Repeating this method updates or replaces a known resource state without duplicating side effects.",
+    options: ["POST", "PUT", "CONNECT", "PATCH (non-atomic append)"],
+    correct: 1,
+    type: "mcq",
+  },
 ];
 export const resources: [string, string, string, string, string][] = [
   ["DSA", "Visualize data structures", "VisuAlgo", "Beginner", "https://visualgo.net/en"],
@@ -332,11 +389,25 @@ export const resources: [string, string, string, string, string][] = [
     "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide",
   ],
   [
+    "TypeScript",
+    "TypeScript handbook",
+    "TypeScript",
+    "Intermediate",
+    "https://www.typescriptlang.org/docs/handbook/intro.html",
+  ],
+  [
     "React",
     "Thinking in React",
     "React",
     "Intermediate",
     "https://react.dev/learn/thinking-in-react",
+  ],
+  [
+    "Backend",
+    "High scalability patterns",
+    "Martin Fowler",
+    "Intermediate",
+    "https://martinfowler.com/architecture/",
   ],
   [
     "Behavioral",

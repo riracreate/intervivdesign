@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/lib/interviv/workspace";
 import { modes } from "@/lib/interviv/data";
+import { getEffectiveReviewSchedule, partitionReviews } from "@/lib/interviv/spaced-repetition";
 import stillLife from "@/assets/practice-still-life.jpg";
 import {
   Heading,
@@ -17,6 +18,7 @@ import {
   Layers,
   Sparkles,
   ChartNoAxesCombined,
+  Check,
 } from "./ui";
 export function skillScores(sessions: ReturnType<typeof useWorkspace>["sessions"]) {
   const map = new Map<string, number[]>();
@@ -95,10 +97,9 @@ export function Activity() {
       </table>
       {!sessions.length && (
         <div className="empty">
-          Your first session is the start of your story.
-          <br />
+          No sessions yet. Complete one quick practice round to establish your baseline.{" "}
           <Link to="/practice" className="text-link">
-            Find your practice <ArrowRight />
+            Start practicing <ArrowRight />
           </Link>
         </div>
       )}
@@ -116,25 +117,88 @@ export function Overview() {
     sessions.filter((s) => s.status === "complete").map((s) => s.created_at.slice(0, 10)),
   ).size;
   const unfinished = sessions.find((s) => s.status === "in_progress");
+  const hasResume = Boolean(data.extractedResume || data.resume.trim().length > 40);
+  const hasCompletedSession = sessions.some((s) => s.status === "complete");
+  const { due } = partitionReviews(getEffectiveReviewSchedule(data.reviewSchedule));
+  const solvedCount = data.solvedProblems?.length ?? 0;
   const date = new Date().toLocaleDateString("en-GB", {
     weekday: "long",
     day: "numeric",
     month: "long",
   });
+  const checklist = [
+    {
+      step: 1,
+      title: "Pick your target company & role",
+      detail: `${data.company} · ${data.role}`,
+      done: Boolean(data.role && data.company),
+      action: (
+        <Button size="sm" variant="outline" onClick={() => setTargetOpen(true)}>
+          Edit target
+        </Button>
+      ),
+    },
+    {
+      step: 2,
+      title: "Extract skills & audit your resume",
+      detail: data.extractedResume
+        ? `${data.extractedResume.allSkills.length} skills extracted · ${data.extractedResume.score.overall}% alignment`
+        : "Upload PDF/TXT or paste resume text to detect skill gaps",
+      done: hasResume,
+      action: (
+        <Button size="sm" variant={hasResume ? "outline" : "default"} asChild>
+          <Link to="/resume">
+            {hasResume ? "View extractor" : "Open extractor"} <ArrowRight />
+          </Link>
+        </Button>
+      ),
+    },
+    {
+      step: 3,
+      title: "Run a baseline mock or coding round",
+      detail: hasCompletedSession
+        ? `${sessions.filter((s) => s.status === "complete").length} completed session(s)`
+        : "15-minute unassisted round sets your skill baseline",
+      done: hasCompletedSession,
+      action: (
+        <Button size="sm" variant={hasCompletedSession ? "outline" : "default"} asChild>
+          <Link to="/practice">
+            Start practice <ArrowRight />
+          </Link>
+        </Button>
+      ),
+    },
+    {
+      step: 4,
+      title: "Follow your gap-prioritized roadmap",
+      detail:
+        data.completed.length > 0
+          ? `${data.completed.length} roadmap milestone(s) completed`
+          : "Turn measured gaps into daily study blocks",
+      done: data.completed.length > 0,
+      action: (
+        <Button size="sm" variant="outline" asChild>
+          <Link to="/roadmap">
+            Open roadmap <ArrowRight />
+          </Link>
+        </Button>
+      ),
+    },
+  ];
   return (
     <>
       <Heading
         eyebrow={date}
-        title="A little better, every day."
+        title="Your interview readiness workspace."
         subtitle={
           user
-            ? `Welcome back${user.user_metadata["display_name"] ? `, ${String(user.user_metadata["display_name"]).split(" ")[0]}` : ""}. Let’s make your next step count.`
-            : "Your next chapter starts here. Let’s make your next step count."
+            ? `Welcome back${user.user_metadata["display_name"] ? `, ${String(user.user_metadata["display_name"]).split(" ")[0]}` : ""}. Follow your readiness checklist or jump straight into practice.`
+            : "Audit your resume, run live coding & SQL tests, and practice interviews in one calm workspace."
         }
         action={
-          <span className="streak">
+          <span className="streak tabular-nums">
             <Flame />
-            {days ? `${days} practice days` : "A fresh start"}
+            {days ? `${days} practice day${days === 1 ? "" : "s"}` : "Ready to begin"}
           </span>
         }
       />
@@ -148,22 +212,30 @@ export function Overview() {
               height={576}
             />
             <div className="next-session-text">
-              <div className="eyebrow">Your next best step</div>
+              <div className="eyebrow">Recommended next action</div>
               <h2>
-                Big confidence.
-                <br />
-                One small session.
+                {unfinished
+                  ? "Resume your active session."
+                  : !hasResume
+                    ? "Start with your resume."
+                    : "Sharpen your next skill."}
               </h2>
               <p>
                 {unfinished
-                  ? "Pick up where you left off. Your practice is waiting."
-                  : "Build on your knowledge with a focused technical interview."}
+                  ? "Your draft and progress are saved. Pick up right where you left off."
+                  : !hasResume
+                    ? "Extract skills, spot missing role keywords, and launch tailored practice in seconds."
+                    : "Practice mock interviews, live coding tests, SQL queries, or system design."}
               </p>
-              <div className="row">
+              <div className="row wrap">
                 <Button asChild>
                   {unfinished ? (
                     <Link to="/session/$sessionId" params={{ sessionId: unfinished.id }}>
-                      Continue practice <ArrowRight />
+                      Continue session <ArrowRight />
+                    </Link>
+                  ) : !hasResume ? (
+                    <Link to="/resume">
+                      Open resume extractor <ArrowRight />
                     </Link>
                   ) : (
                     <Link to="/practice">
@@ -171,7 +243,9 @@ export function Overview() {
                     </Link>
                   )}
                 </Button>
-                <span className="tiny text-muted">~15 min · At your pace</span>
+                <Button variant="outline" asChild>
+                  <Link to="/problems">Coding & SQL arena</Link>
+                </Button>
               </div>
             </div>
           </section>
@@ -182,48 +256,93 @@ export function Overview() {
               unit={average === null ? "" : "%"}
               note={
                 average === null
-                  ? "Your first session sets a baseline"
-                  : "Based on unassisted practice"
+                  ? "Unassisted sessions set your baseline"
+                  : "Deterministic unassisted average"
               }
               icon={<Target />}
             />
             <Metric
-              label="Practice sessions"
-              value={sessions.length}
-              note={sessions.length ? "Every session is a step forward" : "Your next small step"}
+              label="Coding challenges"
+              value={solvedCount}
+              unit=" / 6"
+              note={`${due.length} spaced-review item${due.length === 1 ? "" : "s"} due`}
               icon={<Layers />}
             />
             <Metric
-              label="Skills explored"
+              label="Skills measured"
               value={scores.length}
               unit=" / 8"
-              note={`${Math.max(0, 8 - scores.length)} to explore for your target`}
+              note={`${data.extractedResume?.allSkills.length ?? 0} skills found in resume`}
               icon={<Sparkles />}
             />
           </div>
+          <section className="mb-6">
+            <div className="section-title">
+              <h2>Quick readiness path</h2>
+              <span className="meta-line">
+                {checklist.filter((c) => c.done).length} of {checklist.length} steps complete
+              </span>
+            </div>
+            <div className="readiness-checklist">
+              {checklist.map((item) => (
+                <div className={`checklist-item ${item.done ? "done" : ""}`} key={item.step}>
+                  <div className="row" style={{ flex: 1 }}>
+                    <span className="checklist-step">
+                      {item.done ? <Check size={15} /> : item.step}
+                    </span>
+                    <div>
+                      <strong className="small">{item.title}</strong>
+                      <div className="meta-line">{item.detail}</div>
+                    </div>
+                  </div>
+                  {item.action}
+                </div>
+              ))}
+            </div>
+          </section>
           <section>
             <div className="section-title">
-              <h2>Find your flow</h2>
+              <h2>Platform toolkit</h2>
               <Link to="/practice" className="text-link">
-                All practice <ArrowRight />
+                All practice modes <ArrowRight />
               </Link>
             </div>
             <div className="practice-grid">
-              {modes.slice(0, 3).map((m) => (
-                <Link to="/practice" search={{ mode: m.id }} className="practice-card" key={m.id}>
-                  <span className={`icon-box ${m.tone}`}>
-                    <Icon name={m.icon} />
-                  </span>
-                  <h3>
-                    {m.id === "coding" ? "Coding & ML" : m.id === "oa" ? "OA & SQL" : m.title}
-                  </h3>
-                  <p>{m.description}</p>
-                  <span className="card-bottom">
-                    {m.time}
-                    <ArrowUpRight />
-                  </span>
-                </Link>
-              ))}
+              <Link to="/resume" className="practice-card">
+                <span className="icon-box">
+                  <Icon name="book" />
+                </span>
+                <h3>Resume Extractor</h3>
+                <p>
+                  Parse skills, audit action verbs & metrics, and match against job descriptions.
+                </p>
+                <span className="card-bottom">
+                  PDF & text parser
+                  <ArrowUpRight />
+                </span>
+              </Link>
+              <Link to="/problems" className="practice-card">
+                <span className="icon-box lavender">
+                  <Icon name="code" />
+                </span>
+                <h3>Coding & SQL Arena</h3>
+                <p>Write solutions and run visible JavaScript unit tests and live SQL queries.</p>
+                <span className="card-bottom">
+                  Live test execution
+                  <ArrowUpRight />
+                </span>
+              </Link>
+              <Link to="/learn" className="practice-card">
+                <span className="icon-box peach">
+                  <Icon name="layers" />
+                </span>
+                <h3>Spaced Repetition</h3>
+                <p>Review due concepts on a 1–35 day ladder and retry your weakest rounds.</p>
+                <span className="card-bottom">
+                  {due.length} due now
+                  <ArrowUpRight />
+                </span>
+              </Link>
             </div>
           </section>
           <Activity />
@@ -231,30 +350,27 @@ export function Overview() {
         <div className="home-right">
           <section className="panel target-card">
             <div className="row between">
-              <span className="target-title">THE ROLE YOU’RE WORKING TOWARD</span>
+              <span className="target-title">TARGET ROLE</span>
               <Target size={18} />
             </div>
             <span className="icon-box">
               <Layers />
             </span>
             <h3>{data.role}</h3>
-            <p>{data.company} · Your next chapter</p>
-            <span className="pill">
-              <span className="dot" />
-              {scores.length} of 8 skills explored
-            </span>
-            <div>
-              <Button variant="link" className="text-link p-0" onClick={() => setTargetOpen(true)}>
-                Edit your target <ArrowUpRight />
+            <p>{data.company}</p>
+            <div className="meta-line">{scores.length} of 8 core skills measured</div>
+            <div className="mt-4">
+              <Button variant="outline" size="sm" onClick={() => setTargetOpen(true)}>
+                Edit target <ArrowUpRight />
               </Button>
             </div>
           </section>
           <section className="panel skill-panel">
             <div className="row between">
-              <h2>Your skill snapshot</h2>
+              <h2>Skill snapshot</h2>
               <ChartNoAxesCombined size={17} />
             </div>
-            <p>A clearer picture of where you stand.</p>
+            <p>Measured from your unassisted interview & assessment rounds.</p>
             {["DSA", "DBMS", "OOP", "System design"].map((s) => {
               const score = scores.find((x) => x.skill === s);
               return (
@@ -274,13 +390,13 @@ export function Overview() {
               );
             })}
             <Link to="/progress" className="text-link">
-              Explore your progress <ArrowRight />
+              Explore full progress <ArrowRight />
             </Link>
           </section>
           <section className="roadmap-teaser">
-            <div className="eyebrow">A little structure goes a long way</div>
-            <h3>Your path, one day at a time.</h3>
-            <p>A focused plan to close the gap between where you are and where you want to be.</p>
+            <div className="eyebrow">Personalized study plan</div>
+            <h3>Your path, ordered by gaps.</h3>
+            <p>Automatically prioritizes your weakest measured skills and coach recommendations.</p>
             <Button variant="outline" asChild>
               <Link to="/roadmap">
                 Open my roadmap <ArrowRight />

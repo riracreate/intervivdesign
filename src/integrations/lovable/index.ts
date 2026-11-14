@@ -13,6 +13,26 @@ type SignInOptions = {
 export const lovable = {
   auth: {
     signInWithOAuth: async (provider: OAuthProvider, opts?: SignInOptions) => {
+      const hasSupabase =
+        Boolean(import.meta.env["VITE_SUPABASE_URL"]) &&
+        Boolean(import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"]);
+      if (!hasSupabase) {
+        const res = await supabase.auth.signInWithPassword({
+          email: `${provider}@interviv.local`,
+          password: "local-demo-user",
+        });
+        return {
+          redirected: false as const,
+          error: res.error,
+          tokens: res.data.session
+            ? {
+                access_token: res.data.session.access_token,
+                refresh_token: res.data.session.refresh_token,
+              }
+            : undefined,
+        };
+      }
+
       const result = await lovableAuth.signInWithOAuth(provider, {
         ...opts,
         extraParams: {

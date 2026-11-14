@@ -1,15 +1,29 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/lib/interviv/workspace";
 import { skills, modes, makeQuestions } from "@/lib/interviv/data";
 import { Heading, Icon, ArrowRight, Plus, AuthPrompt } from "./ui";
 import { toast } from "sonner";
-export function Practice({ initialMode = "interview" }: { initialMode?: string | undefined }) {
+function parseSkills(raw?: string) {
+  if (!raw) return null;
+  const parsed = raw
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  return parsed.length ? parsed : null;
+}
+export function Practice({
+  initialMode = "interview",
+  initialSkill,
+}: {
+  initialMode?: string | undefined;
+  initialSkill?: string | undefined;
+}) {
   const { user, data, update, saveSession } = useWorkspace();
   const nav = useNavigate();
   const [mode, setMode] = useState(initialMode);
-  const [focus, setFocus] = useState(["DBMS", "DSA"]);
+  const [focus, setFocus] = useState<string[]>(() => parseSkills(initialSkill) ?? ["DBMS", "DSA"]);
   const [duration, setDuration] = useState(15);
   const [count, setCount] = useState(3);
   const [assessment, setAssessment] = useState(false);
@@ -17,6 +31,19 @@ export function Practice({ initialMode = "interview" }: { initialMode?: string |
   const [blocks, setBlocks] = useState(["oa", "sql", "interview"]);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (initialMode) setMode(initialMode);
+  }, [initialMode]);
+  useEffect(() => {
+    const parsed = parseSkills(initialSkill);
+    if (parsed) {
+      setFocus(parsed);
+      if (!initialMode && parsed.length === 1 && parsed[0] === "Behavioral") setMode("behavioral");
+      else if (!initialMode && parsed.length === 1 && parsed[0] === "System design")
+        setMode("design");
+      else if (!initialMode && parsed.length === 1 && parsed[0] === "SQL") setMode("sql");
+    }
+  }, [initialSkill, initialMode]);
   const selected = modes.find((m) => m.id === mode) ?? modes[0];
   if (!selected) return null;
   async function start() {
@@ -32,6 +59,7 @@ export function Practice({ initialMode = "interview" }: { initialMode?: string |
     setBusy(true);
     try {
       const id = crypto.randomUUID();
+      const now = Date.now();
       const roundCount =
         mode === "full" ? focus.length * count : mode === "custom" ? blocks.length * count : count;
       await saveSession({
@@ -43,18 +71,20 @@ export function Practice({ initialMode = "interview" }: { initialMode?: string |
         status: "in_progress",
         score: null,
         assisted: false,
-        created_at: new Date().toISOString(),
+        created_at: new Date(now).toISOString(),
         draft: {
           questions:
             mode === "custom"
               ? blocks.flatMap((b) => makeQuestions(b, focus, count))
               : makeQuestions(mode, focus, roundCount),
           answer: "",
+          selected: null,
           index: 0,
           assessment,
           duration,
           blocks,
-          deadline: assessment ? Date.now() + duration * 60000 : null,
+          startedAt: now,
+          deadline: assessment ? now + duration * 60000 : null,
         },
       });
       await nav({ to: "/session/$sessionId", params: { sessionId: id } });
@@ -108,6 +138,19 @@ export function Practice({ initialMode = "interview" }: { initialMode?: string |
                 placeholder="Find a skill…"
               />
             </label>
+            {data.extractedResume && data.extractedResume.allSkills.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setFocus(data.extractedResume?.allSkills.slice(0, 5) ?? focus);
+                  toast.success("Loaded skills from your extracted resume.");
+                }}
+              >
+                Use resume skills ({Math.min(5, data.extractedResume.allSkills.length)})
+              </Button>
+            )}
             <div className="chip-group">
               {skills
                 .filter((s) => s.toLowerCase().includes(query.toLowerCase()))
@@ -155,9 +198,7 @@ export function Practice({ initialMode = "interview" }: { initialMode?: string |
                 onChange={(e) => setCount(Math.max(1, Math.min(10, Number(e.target.value))))}
               />
             </label>
-            <p className="tiny text-muted">
-              Curated fundamentals · Adaptive difficulty is not yet available.
-            </p>
+            <p className="meta-line">Curated fundamentals · Deterministic scoring.</p>
             <div className="check-row">
               <input
                 id="assessment"
@@ -165,7 +206,7 @@ export function Practice({ initialMode = "interview" }: { initialMode?: string |
                 checked={assessment}
                 onChange={(e) => setAssessment(e.target.checked)}
               />
-              <label htmlFor="assessment">Assessment · No hints</label>
+              <label htmlFor="assessment">Assessment · Timed with no hints</label>
             </div>
             {mode === "custom" && (
               <>
@@ -245,15 +286,15 @@ export function Practice({ initialMode = "interview" }: { initialMode?: string |
               <strong>{duration} min session</strong>
             </div>
             {["coding", "ml"].includes(mode) && (
-              <p className="notice warning">
-                Code execution is unavailable. Answers can be saved as unscored drafts.
+              <p className="notice" style={{ marginBottom: 0 }}>
+                JavaScript solutions can run directly against visible test cases in your browser.
               </p>
             )}
             <Button className="full" onClick={start} disabled={busy || !focus.length}>
               {busy ? "Starting…" : "Start my session"}
               <ArrowRight />
             </Button>
-            <p className="tiny text-muted">
+            <p className="meta-line">
               {assessment
                 ? "Timed assessment · Hints locked"
                 : "Coached practice · Hints available"}

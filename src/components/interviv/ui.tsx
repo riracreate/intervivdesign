@@ -20,15 +20,15 @@ import {
   X,
   Check,
   LogOut,
-  ChevronDown,
-  Command,
   Plus,
   Clock,
   Bookmark,
   Volume2,
+  Play,
+  RotateCcw,
 } from "lucide-react";
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useWorkspace } from "@/lib/interviv/workspace";
@@ -52,6 +52,8 @@ export {
   Clock,
   Bookmark,
   Volume2,
+  Play,
+  RotateCcw,
 };
 export function Icon({ name }: { name: string }) {
   const icons: Record<string, typeof Mic> = {
@@ -118,9 +120,9 @@ export function Metric({
         {label}
         {icon}
       </div>
-      <div className="metric-value">
+      <div className="metric-value tabular-nums">
         {value}
-        <small>{unit}</small>
+        {unit && <small>{unit}</small>}
       </div>
       <div className="metric-note">{note}</div>
     </div>
@@ -131,7 +133,7 @@ export function SkillBar({ label, value, note }: { label: string; value: number;
     <div className="skill-line">
       <div className="row between">
         <span>{label}</span>
-        <span className="text-muted">{note ?? `${value}%`}</span>
+        <span className="text-muted tabular-nums">{note ?? `${value}%`}</span>
       </div>
       <progress max={100} value={value} />
     </div>
@@ -144,12 +146,12 @@ const mainNav = [
   { to: "/roadmap", title: "My roadmap", icon: Map },
 ] as const;
 const toolsNav = [
-  { to: "/problems", title: "Coding arena", icon: Code2 },
-  { to: "/learn", title: "Learning hub", icon: GraduationCap },
-  { to: "/resume", title: "Resume check", icon: FileText },
-  { to: "/resources", title: "Learning library", icon: BookOpen },
-  { to: "/jobs", title: "Jobs explorer", icon: Briefcase },
+  { to: "/resume", title: "Resume extractor", icon: FileText },
+  { to: "/problems", title: "Coding & SQL arena", icon: Code2 },
+  { to: "/learn", title: "Spaced repetition", icon: GraduationCap },
   { to: "/gap-analysis", title: "Role gap analysis", icon: Target },
+  { to: "/jobs", title: "Jobs & role match", icon: Briefcase },
+  { to: "/resources", title: "Learning library", icon: BookOpen },
   { to: "/coach", title: "AI coach", icon: Sparkles },
 ] as const;
 export function AppShell({ children }: { children: ReactNode }) {
@@ -160,6 +162,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [palette, setPalette] = useState(false);
   const [search, setSearch] = useState("");
   const title = [...mainNav, ...toolsNav].find((n) => n.to === path)?.title ?? "Your workspace";
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalette((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   async function signout() {
     await router.options.context.queryClient.cancelQueries();
     router.options.context.queryClient.clear();
@@ -169,9 +181,22 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${open ? "open" : ""}`}>
-        <Brand />
-        <div className="nav-label">Your workspace</div>
+      <aside className={`sidebar ${open ? "open" : ""}`} aria-label="Workspace navigation">
+        <div className="row between">
+          <Brand />
+          {open && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="mobile-toggle"
+              aria-label="Close navigation"
+              onClick={() => setOpen(false)}
+            >
+              <X size={18} />
+            </Button>
+          )}
+        </div>
+        <div className="nav-label">Core workflow</div>
         <nav className="nav-list">
           {mainNav.map((n) => (
             <Link
@@ -185,7 +210,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
-        <div className="nav-label">Go a little further</div>
+        <div className="nav-label">Readiness toolkit</div>
         <nav className="nav-list">
           {toolsNav.map((n) => (
             <Link
@@ -201,14 +226,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="sidebar-bottom">
           <div className="coach-nudge">
-            <Sparkles size={20} />
-            <h4>A nudge in the right direction.</h4>
-            <p>
-              Not sure what to practice?
-              <br />
-              Let’s find your next step.
-            </p>
-            <Link className="text-link" to="/coach">
+            <Sparkles size={18} />
+            <h4>Need a clear plan?</h4>
+            <p>Turn a role target or job description into a focused weekly roadmap.</p>
+            <Link className="text-link" to="/coach" onClick={() => setOpen(false)}>
               Ask your coach <ArrowRight />
             </Link>
           </div>
@@ -222,11 +243,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
             <div>
               <b>
-                {user
-                  ? user.user_metadata["display_name"] || "Your workspace"
-                  : "Your next chapter"}
+                {user ? user.user_metadata["display_name"] || "Your workspace" : "Guest workspace"}
               </b>
-              <small>{user ? "Personal workspace" : "Explore · No account needed"}</small>
+              <small>{user ? "Signed in · Saved" : "No account needed to browse"}</small>
             </div>
             {user && (
               <Button
@@ -259,22 +278,21 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
           <div className="top-actions">
-            <span className="demo-status">
-              <span className="dot" />
-              {user ? "Personal workspace" : "Explore InterViv"}
-            </span>
+            <span className="demo-status">{user ? "Personal workspace" : "Browsing mode"}</span>
             <Button
-              size="icon"
+              size="sm"
               variant="outline"
-              className="search-button"
-              title="Search pages"
+              className="search-trigger"
+              title="Jump to any page (Ctrl+K)"
               aria-label="Search pages"
               onClick={() => setPalette(true)}
             >
-              <Search size={15} />
+              <Search size={14} />
+              <span>Jump</span>
+              <kbd>⌘K</kbd>
             </Button>
             {ready && !user && (
-              <Button size="sm" variant="outline" asChild>
+              <Button size="sm" variant="default" asChild>
                 <Link to="/auth">
                   Sign in <ArrowUpRight />
                 </Link>
@@ -285,29 +303,40 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="main-content">
           {children}
           <footer className="app-footer">
-            <span>Small steps today. More possibilities tomorrow.</span>
-            <span>interViv — Made for your next chapter. ↗</span>
+            <span>InterViv — Deterministic interview readiness & career prep</span>
+            <span>Practice · Resume extractor · Coding & SQL arena</span>
           </footer>
         </main>
       </div>
       <Dialog open={palette} onOpenChange={setPalette}>
         <DialogContent>
-          <DialogTitle>Where to next?</DialogTitle>
+          <DialogTitle>Jump to a workspace tool</DialogTitle>
           <input
+            autoFocus
             aria-label="Search pages"
-            placeholder="Search your workspace…"
+            placeholder="Type a page or feature (e.g., resume, coding, SQL, roadmap)…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          {[...mainNav, ...toolsNav]
-            .filter((n) => n.title.toLowerCase().includes(search.toLowerCase()))
-            .map((n) => (
-              <Link className="command-item" key={n.to} to={n.to} onClick={() => setPalette(false)}>
-                <n.icon size={18} />
-                {n.title}
-                <ArrowRight size={15} />
-              </Link>
-            ))}
+          <div>
+            {[...mainNav, ...toolsNav]
+              .filter((n) => n.title.toLowerCase().includes(search.toLowerCase()))
+              .map((n) => (
+                <Link
+                  className="command-item"
+                  key={n.to}
+                  to={n.to}
+                  onClick={() => {
+                    setPalette(false);
+                    setSearch("");
+                  }}
+                >
+                  <n.icon size={18} />
+                  <span style={{ flex: 1 }}>{n.title}</span>
+                  <ArrowRight size={15} />
+                </Link>
+              ))}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
@@ -323,11 +352,19 @@ export function TargetDialog({
   const { data, update, user } = useWorkspace();
   const [company, setCompany] = useState(data.company);
   const [role, setRole] = useState(data.role);
+  useEffect(() => {
+    if (open) {
+      setCompany(data.company);
+      setRole(data.role);
+    }
+  }, [open, data.company, data.role]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogTitle>Set your next chapter.</DialogTitle>
-        <p className="small text-muted">Choose a direction for your practice.</p>
+        <DialogTitle>Set your target role</DialogTitle>
+        <p className="small text-muted">
+          Roadmap priorities, resume gap checks, and practice defaults align to this role.
+        </p>
         <div className="form-stack">
           <label>
             Company
@@ -344,6 +381,8 @@ export function TargetDialog({
                 "Software Engineer",
                 "Backend Engineer",
                 "Frontend Engineer",
+                "Full-Stack Engineer",
+                "Data Engineer",
                 "Data Scientist",
                 "ML Engineer",
                 "DevOps Engineer",
@@ -380,8 +419,8 @@ export function TargetDialog({
 }
 export function AuthPrompt() {
   return (
-    <div className="notice row between">
-      <span>Make your practice yours. Sign in to save sessions and progress.</span>
+    <div className="notice row between wrap">
+      <span>Sign in to save your interview sessions, extracted resume, and review schedule.</span>
       <Button variant="outline" size="sm" asChild>
         <Link to="/auth">
           Sign in <ArrowRight />
