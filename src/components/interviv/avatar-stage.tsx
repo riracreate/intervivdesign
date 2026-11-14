@@ -52,14 +52,34 @@ export function AvatarStage({
       try {
         const ta = await import("@interviewflowai/talking-avatar");
         if (disposed) return;
+        const avatarUrl = appearance === "male" ? ta.AVATARS.male : ta.AVATARS.female;
+        const probe = await fetch(avatarUrl, {
+          method: "HEAD",
+          signal: AbortSignal.timeout(450),
+        });
+        if (!probe.ok) throw new Error(`CDN probe returned ${probe.status}`);
+        if (disposed) return;
         const avatar = new ta.TalkingAvatar({
           container: mount,
-          avatarUrl: appearance === "male" ? ta.AVATARS.male : ta.AVATARS.female,
+          avatarUrl,
           onError: (e) => console.info("[avatar] TalkingAvatar:", e.message),
         });
         taRef.current = avatar as unknown as typeof taRef.current;
         avatar.setStatus(talkingAvatarStatus(poseRef.current));
-        await avatar.ready;
+        const loadedFast = await Promise.race([
+          avatar.ready.then(() => true),
+          new Promise<boolean>((resolve) => window.setTimeout(() => resolve(false), 1200)),
+        ]);
+        if (!loadedFast) {
+          try {
+            avatar.dispose();
+          } catch {
+            /* noop */
+          }
+          taRef.current = null;
+          mount.replaceChildren();
+          throw new Error("TalkingAvatar CDN timeout; switching to procedural stage");
+        }
         cleanup = () => {
           try {
             avatar.dispose();
@@ -71,6 +91,7 @@ export function AvatarStage({
         return;
       } catch (e) {
         console.info("[avatar] TalkingAvatar unavailable, using procedural head:", e);
+        mount.replaceChildren();
       }
       if (disposed) return;
       // ── Fallback: procedural three.js head (offline-safe) ─────────────────
@@ -119,7 +140,7 @@ export function AvatarStage({
       </span>
       <style>{`
         .avatar-stage-wrap{position:relative}
-        .avatar-stage{width:100%;aspect-ratio:4/3;border-radius:14px;overflow:hidden;background:var(--muted);border:1px solid var(--border)}
+        .avatar-stage{width:100%;aspect-ratio:4/3;border-radius:14px;overflow:hidden;background:radial-gradient(circle at 50% 40%, rgba(99,102,241,0.22), #0f172a 72%);border:1px solid var(--border)}
         .avatar-stage canvas{width:100%!important;height:100%!important;display:block}
         .avatar-pose-pill{position:absolute;left:10px;bottom:10px;background:var(--card)}
         .avatar-voice-only{display:flex;gap:10px;align-items:center;border:1px dashed var(--border);border-radius:14px;padding:18px;background:var(--sidebar)}
@@ -144,23 +165,26 @@ async function mountProceduralHead(
 
   const female = appearance !== "male";
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xeef2e6);
+  scene.background = new THREE.Color(0x0f172a);
   const camera = new THREE.PerspectiveCamera(34, 4 / 3, 0.1, 100);
-  camera.position.set(0, 0.35, 4.6);
-  camera.lookAt(0, 0.15, 0);
+  camera.position.set(0, 0.2, 4.35);
+  camera.lookAt(0, 0.08, 0);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(mount.clientWidth || 640, mount.clientHeight || 480);
   mount.appendChild(renderer.domElement);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-  const key = new THREE.DirectionalLight(0xffffff, 1.6);
+  scene.add(new THREE.AmbientLight(0xe0e7ff, 0.9));
+  const key = new THREE.DirectionalLight(0xffffff, 1.85);
   key.position.set(2.5, 3, 4);
   scene.add(key);
-  const fill = new THREE.DirectionalLight(0xdfe8d8, 0.5);
+  const fill = new THREE.DirectionalLight(0x818cf8, 0.9);
   fill.position.set(-3, 1, 2);
   scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xa5b4fc, 1.25);
+  rim.position.set(0, 2.2, -3.5);
+  scene.add(rim);
 
   const skin = new THREE.MeshStandardMaterial({
     color: female ? 0xe8bfa5 : 0xdbb08f,
@@ -171,8 +195,8 @@ async function mountProceduralHead(
     roughness: 0.85,
   });
   const shirtMat = new THREE.MeshStandardMaterial({
-    color: female ? 0x5b7a5e : 0x6b6390,
-    roughness: 0.9,
+    color: female ? 0x6366f1 : 0x4f46e5,
+    roughness: 0.78,
   });
   const dark = new THREE.MeshStandardMaterial({ color: 0x2b2622, roughness: 0.4 });
 
@@ -231,7 +255,7 @@ async function mountProceduralHead(
   mouth.scale.set(1.5, 0.35, 0.6);
   head.add(mouth);
 
-  const clock = new THREE.Clock();
+  const startedAt = performance.now();
   let raf = 0;
   const onResize = () => {
     const w = mount.clientWidth || 640;
@@ -244,7 +268,7 @@ async function mountProceduralHead(
 
   const animate = () => {
     raf = requestAnimationFrame(animate);
-    const t = clock.getElapsedTime() * 1000;
+    const t = performance.now() - startedAt;
     const pose = getPose();
     // Breathing (idle motion with intent: chest + slight head bob)
     const breath = breathingScale(t, pose);

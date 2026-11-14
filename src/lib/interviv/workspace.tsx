@@ -3,6 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import type { Question } from "./data";
 import type { ExtractedResume } from "./resume-extractor";
+import type { CareerHistoryProfile } from "./career-import";
+import type { SkillGapRoadmapSnapshot } from "./resume-service";
 import type { ReviewEntry, SpacedState } from "./spaced-repetition";
 export type Result = ReturnType<typeof import("./data").evaluate>;
 export type Round = {
@@ -41,6 +43,8 @@ export type WorkspaceData = {
   resume: string;
   coachPlan?: CoachPlan | null;
   extractedResume?: ExtractedResume | null;
+  careerHistory?: CareerHistoryProfile | null;
+  skillGapRoadmap?: SkillGapRoadmapSnapshot | null;
   reviewSchedule?: ReviewEntry[];
   solvedProblems?: string[];
   completedResources?: string[];
@@ -58,6 +62,8 @@ const initial: WorkspaceData = {
   resume: "",
   coachPlan: null,
   extractedResume: null,
+  careerHistory: null,
+  skillGapRoadmap: null,
   reviewSchedule: [],
   solvedProblems: [],
   completedResources: [],

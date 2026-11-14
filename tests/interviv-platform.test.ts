@@ -17,6 +17,18 @@ import {
   scheduleReviewItem,
 } from "../src/lib/interviv/spaced-repetition";
 
+import {
+  HOW_IT_WORKS_STEPS,
+  LANDING_MODES,
+  buildEnergyMeter,
+  computeGaugeMetrics,
+  dueTopicPriority,
+  interpolateCount,
+  resolveTheme,
+  sliceTypedText,
+  toggleResolvedTheme,
+} from "../src/lib/interviv/landing-and-theme";
+
 test("resume extractor parses contact, categorized skills, education, and bullet audits", () => {
   const result = extractResumeProfile(SAMPLE_RESUME_TEXT, "Software Engineer", SAMPLE_JD_TEXT);
 
@@ -140,4 +152,52 @@ test("spaced repetition scheduler advances stages on pass, resets on miss, and p
   const { due, upcoming } = partitionReviews([dueNow, secondPass], baseTime);
   assert.equal(due.length, 1);
   assert.equal(upcoming.length, 1);
+});
+
+test("theme resolver defaults to dark, honors light toggle override, and toggles cleanly", () => {
+  assert.equal(resolveTheme(null), "dark");
+  assert.equal(resolveTheme(undefined), "dark");
+  assert.equal(resolveTheme("system"), "dark");
+  assert.equal(resolveTheme("light"), "light");
+  assert.equal(resolveTheme("dark"), "dark");
+  assert.equal(toggleResolvedTheme("light"), "dark");
+  assert.equal(toggleResolvedTheme("dark"), "light");
+});
+
+test("count-up, gauge geometry, spaced-repetition priority, typing slice, energy meter, and mode catalog", () => {
+  assert.equal(interpolateCount(100, 0), 0);
+  assert.equal(interpolateCount(100, 1), 100);
+  assert.ok(interpolateCount(100, 0.5) > 50);
+
+  const fullGauge = computeGaugeMetrics(100, 64);
+  assert.equal(Math.round(fullGauge.dashOffset), 0);
+  const halfGauge = computeGaugeMetrics(50, 64);
+  assert.ok(Math.abs(halfGauge.dashOffset - halfGauge.circumference / 2) < 0.01);
+  assert.equal(computeGaugeMetrics(null, 64).clampedScore, 0);
+
+  const now = new Date(2026, 5, 10, 14, 0, 0).getTime();
+  assert.equal(
+    dueTopicPriority(new Date(2026, 5, 9, 10, 0, 0).toISOString(), now).level,
+    "overdue",
+  );
+  assert.equal(
+    dueTopicPriority(new Date(2026, 5, 10, 18, 0, 0).toISOString(), now).level,
+    "due-today",
+  );
+  assert.equal(
+    dueTopicPriority(new Date(2026, 5, 13, 12, 0, 0).toISOString(), now).level,
+    "upcoming",
+  );
+
+  assert.equal(sliceTypedText("hello world", 5), "hello");
+  assert.equal(sliceTypedText("hello", 99), "hello");
+  assert.ok(
+    buildEnergyMeter({ transcript: "Index B+ tree", listening: true, speaking: false }) > 50,
+  );
+
+  assert.deepEqual(
+    LANDING_MODES.map((m) => m.id),
+    ["voice", "camera", "avatar", "coding", "resume"],
+  );
+  assert.equal(HOW_IT_WORKS_STEPS.length, 3);
 });

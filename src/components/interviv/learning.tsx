@@ -526,7 +526,12 @@ export function Roadmap() {
   const [days, setDays] = useState(14);
   const scores = skillScores(sessions);
   const coachSkills = data.coachPlan?.focusSkills ?? [];
-  const resumeMissing = data.extractedResume?.jdMatch.missing ?? [];
+  const resumeMissing = Array.from(
+    new Set([
+      ...(data.skillGapRoadmap?.missingSkills ?? []),
+      ...(data.extractedResume?.jdMatch.missing ?? []),
+    ]),
+  );
   const candidateSkills = Array.from(
     new Set([...coachSkills, ...resumeMissing, ...defaultRoadmapSkills]),
   );
@@ -576,6 +581,29 @@ export function Roadmap() {
         subtitle={`A ${days}-day plan for ${data.company} · ${data.role}.`}
       />
       {!user && <AuthPrompt />}
+      {data.careerHistory && (
+        <section
+          className="panel row between wrap mb-6"
+          aria-label="Imported career history summary"
+        >
+          <div>
+            <div className="eyebrow">Synced from {data.careerHistory.sourceLabel}</div>
+            <div className="small" style={{ marginTop: 4 }}>
+              <strong>{data.careerHistory.fullName}</strong> — {data.careerHistory.headline} ·{" "}
+              {data.careerHistory.roles.length} role(s) &amp;{" "}
+              {data.careerHistory.extractedSkills.length} skills imported
+            </div>
+            {resumeMissing.length > 0 && (
+              <div className="tiny text-muted" style={{ marginTop: 4 }}>
+                Skill gaps promoted to top priority: {resumeMissing.join(", ")}
+              </div>
+            )}
+          </div>
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/">Update import</Link>
+          </Button>
+        </section>
+      )}
       <div className="row between wrap mb-6">
         <div className="chip-group">
           {[7, 14, 30].map((n) => (
@@ -1034,6 +1062,13 @@ export function GapAnalysis() {
       <div className="notice">
         Thin evidence is provisional. Three unassisted attempts per skill establish a reliable
         signal.
+        {data.careerHistory && (
+          <div className="tiny" style={{ marginTop: 6 }}>
+            <strong>Synced {data.careerHistory.sourceLabel}:</strong> Verified in history (
+            {data.careerHistory.extractedSkills.slice(0, 8).join(", ") || "none"}) · Target gaps (
+            {data.extractedResume?.jdMatch.missing.join(", ") || "none"})
+          </div>
+        )}
       </div>
       <div className="grid-two">
         <section className="panel">

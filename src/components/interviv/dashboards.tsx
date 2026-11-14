@@ -176,9 +176,9 @@ export function Dashboards() {
       <style>{`
         .grid-two-dash{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
         @media(max-width:900px){.grid-two-dash{grid-template-columns:1fr}}
-        .streak-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:3px}
-        .streak-cell{aspect-ratio:1;border-radius:3px;background:var(--muted);display:block}
-        .streak-cell.intensity-1{background:#b9cfb2}.streak-cell.intensity-2{background:#7ba873}.streak-cell.intensity-3{background:var(--primary)}
+        .streak-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:4px}
+        .streak-cell{aspect-ratio:1;border-radius:4px;background:rgba(148,163,184,0.16);display:block}
+        .streak-cell.intensity-1{background:rgba(99,102,241,0.38)}.streak-cell.intensity-2{background:rgba(99,102,241,0.68)}.streak-cell.intensity-3{background:#6366f1}
         .heat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
         .heat-cell{border:1px solid var(--border);border-top:4px solid var(--muted);border-radius:10px;padding:10px;background:var(--sidebar);display:grid;gap:2px}
         .heat-cell span{color:var(--muted-foreground);font-size:12px}

@@ -25,7 +25,8 @@ import {
   type AvatarPose,
 } from "@/lib/interviv/avatar";
 import { AvatarStage } from "./avatar-stage";
-import { Heading, ArrowRight, Check, Mic } from "./ui";
+import { FeedbackResultsView } from "./report";
+import { Heading, Check, Mic, Video } from "./ui";
 import { toast } from "sonner";
 
 type Flow = "asking" | "thinking" | "listening" | "review" | "idle";
@@ -42,6 +43,15 @@ export function AvatarInterview() {
   const [live, setLive] = useState("");
   const [interruptMs, setInterruptMs] = useState<number | null>(null);
   const [sessionId] = useState(() => crypto.randomUUID());
+  const [pipCamOn, setPipCamOn] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(true);
+
+  useEffect(() => {
+    setSpeechSupported(isSpeechRecognitionSupported());
+  }, []);
+
+  const pipVideoRef = useRef<HTMLVideoElement>(null);
+  const pipStreamRef = useRef<MediaStream | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const askedAtRef = useRef(new Date().toISOString());
   const flowRef = useRef(flow);
@@ -59,9 +69,36 @@ export function AvatarInterview() {
       } catch {
         /* noop */
       }
+      pipStreamRef.current?.getTracks().forEach((t) => t.stop());
     },
     [],
   );
+
+  async function togglePipCam() {
+    if (pipCamOn) {
+      pipStreamRef.current?.getTracks().forEach((t) => t.stop());
+      pipStreamRef.current = null;
+      if (pipVideoRef.current) pipVideoRef.current.srcObject = null;
+      setPipCamOn(false);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 320, height: 240 },
+        audio: false,
+      });
+      pipStreamRef.current = stream;
+      setPipCamOn(true);
+      requestAnimationFrame(() => {
+        if (pipVideoRef.current) {
+          pipVideoRef.current.srcObject = stream;
+          void pipVideoRef.current.play();
+        }
+      });
+    } catch {
+      toast.info("Camera preview unavailable — continuing without PiP feed.");
+    }
+  }
 
   function ask(q: Question) {
     askedAtRef.current = new Date().toISOString();
@@ -74,7 +111,6 @@ export function AvatarInterview() {
         if (flowRef.current === "asking") setFlow("idle");
       },
     });
-    // Unlock if onend is swallowed by the browser
     setTimeout(() => {
       if (flowRef.current === "asking") setFlow("idle");
     }, 6000);
@@ -82,7 +118,6 @@ export function AvatarInterview() {
 
   function startListening() {
     if (!currentQ) return;
-    // Interruptible speech: kill TTS immediately, Viv switches to listening.
     const ms = interruptSpeech();
     setInterruptMs(ms);
     if (ms > INTERRUPT_BUDGET_MS)
@@ -104,7 +139,6 @@ export function AvatarInterview() {
     let finals = "";
     let interrupted = false;
     rec.onresult = (e) => {
-      // First user speech while Viv talks = barge-in: guarantee TTS is dead.
       if (!interrupted) {
         interrupted = true;
         const m2 = interruptSpeech();
@@ -155,63 +189,70 @@ export function AvatarInterview() {
     setEntries(nextEntries);
     setFlow("review");
 
-    try {
-      await saveSession({
-        id: sessionId,
-        title: "Interview with Viv",
-        mode: "avatar",
-        skills: questions.map((q) => q.skill),
-        rounds: nextEntries.map((e) => ({
-          question: questions.find((q) => q.id === e.questionId) ?? currentQ,
-          answer: e.transcript,
-          selected: null,
-          result: evaluate(currentQ, e.transcript, null),
+    if (user) {
+      try {
+        await saveSession({
+          id: sessionId,
+          title: "Interview with Viv",
+          mode: "avatar",
+          skills: questions.map((q) => q.skill),
+          rounds: nextEntries.map((e) => ({
+            question: questions.find((q) => q.id === e.questionId) ?? currentQ,
+            answer: e.transcript,
+            selected: null,
+            result: evaluate(currentQ, e.transcript, null),
+            assisted: false,
+          })),
+          status: index + 1 >= questions.length ? "complete" : "in_progress",
+          score: voiceSessionScore(nextEntries),
           assisted: false,
-        })),
-        status: index + 1 >= questions.length ? "complete" : "in_progress",
-        score: voiceSessionScore(nextEntries),
-        assisted: false,
-        created_at: new Date().toISOString(),
-        draft: { questions, index, voiceEntries: nextEntries },
-      });
-    } catch {
-      toast.error("Answer kept on screen — saving will retry on next answer.");
+          created_at: new Date().toISOString(),
+          draft: { questions, index, voiceEntries: nextEntries },
+        });
+      } catch {
+        toast.error("Answer kept on screen — saving will retry on next answer.");
+      }
     }
 
-    if (index + 1 >= questions.length) return;
+    if (index + 1 >= questions.length) {
+      setIndex((i) => i + 1);
+      setFlow("idle");
+      return;
+    }
 
-    // Thinking pause: Viv looks down 1–2s before the adaptive follow-up.
     setFlow("thinking");
     const pause = thinkingPauseMs();
     let nextQ: Question | undefined = questions[index + 1];
-    try {
-      const { followUp } = await generateFollowUp({
-        data: {
-          question: {
-            id: currentQ.id,
+    if (user) {
+      try {
+        const { followUp } = await generateFollowUp({
+          data: {
+            question: {
+              id: currentQ.id,
+              skill: currentQ.skill,
+              prompt: currentQ.prompt,
+              concepts: currentQ.concepts,
+              hint: currentQ.hint,
+            },
+            answer: transcript,
+            score: entry.score,
+          },
+        });
+        if (followUp && followUp.length > 8) {
+          nextQ = {
+            id: `${currentQ.id}-viv-followup`,
             skill: currentQ.skill,
-            prompt: currentQ.prompt,
+            prompt: followUp,
             concepts: currentQ.concepts,
             hint: currentQ.hint,
-          },
-          answer: transcript,
-          score: entry.score,
-        },
-      });
-      if (followUp && followUp.length > 8) {
-        nextQ = {
-          id: `${currentQ.id}-viv-followup`,
-          skill: currentQ.skill,
-          prompt: followUp,
-          concepts: currentQ.concepts,
-          hint: currentQ.hint,
-        };
-        const withFollow = [...questions];
-        withFollow.splice(index + 1, 0, nextQ);
-        setQuestions(withFollow);
+          };
+          const withFollow = [...questions];
+          withFollow.splice(index + 1, 0, nextQ);
+          setQuestions(withFollow);
+        }
+      } catch {
+        /* planned next question stands */
       }
-    } catch {
-      /* planned next question stands */
     }
     window.setTimeout(() => {
       const ni = index + 1;
@@ -226,163 +267,202 @@ export function AvatarInterview() {
     if (questions[0]) ask(questions[0]);
   }
 
-  if (!user) {
+  if (!currentQ) {
+    const builtRounds = entries.map((e) => {
+      const q = questions.find((item) => item.id === e.questionId) ?? questions[0]!;
+      return {
+        question: q,
+        answer: e.transcript,
+        selected: null,
+        result: evaluate(q, e.transcript, null),
+        assisted: false,
+      };
+    });
     return (
-      <>
-        <Heading
-          eyebrow="Interview with Viv"
-          title="Meet Viv, your interviewer."
-          subtitle="A spoken interview with a lip-synced avatar, natural pauses, and adaptive follow-ups."
-        />
-        <div className="empty">Sign in to interview with Viv and save your transcript.</div>
-        <Button asChild>
-          <Link to="/auth">
-            Sign in <ArrowRight />
-          </Link>
-        </Button>
-      </>
+      <FeedbackResultsView
+        title="Interview with Viv"
+        subtitle={`Completed ${entries.length} turn(s) with Viv`}
+        score={voiceSessionScore(entries)}
+        skills={[...new Set(questions.map((q) => q.skill))]}
+        rounds={builtRounds}
+        onPracticeAgain={() => {
+          setEntries([]);
+          setIndex(0);
+          setLive("");
+          setFlow("idle");
+        }}
+        action={
+          <div className="row wrap no-print">
+            {user && (
+              <Button variant="outline" asChild>
+                <Link to="/dashboard/$sessionId" params={{ sessionId }}>
+                  Saved report
+                </Link>
+              </Button>
+            )}
+            <Button variant="outline" asChild>
+              <Link to="/voice">Voice studio</Link>
+            </Button>
+          </div>
+        }
+      />
     );
   }
 
   return (
     <>
       <Heading
-        eyebrow="Interview with Viv · 3D avatar"
+        eyebrow="Interview with Viv · 3D theater"
         title="Interview with Viv."
-        subtitle="Viv speaks each question aloud. Start answering at any time — Viv stops talking within 300ms and listens."
+        subtitle="Theater-lit 3D interviewer with glass camera PiP, live pulsing subtitles, and 300ms speech barge-in."
         action={
-          <span className="pill">
-            {currentQ ? `Q${index + 1} / ${questions.length}` : "Complete"}
-          </span>
+          <div className="row wrap">
+            <span className="pill tabular-nums">
+              {currentQ ? `Q${index + 1} / ${questions.length}` : "Complete"}
+            </span>
+            {!user && <span className="pill warning">Guest preview · Sign in to save</span>}
+          </div>
         }
       />
 
-      <fieldset className="panel appearance-picker">
-        <legend>Viv&apos;s appearance</legend>
-        <div className="row" role="radiogroup" aria-label="Avatar appearance">
-          {APPEARANCES.map((a) => (
-            <Button
-              key={a.id}
-              variant={appearance === a.id ? "secondary" : "outline"}
-              role="radio"
-              aria-checked={appearance === a.id}
-              onClick={() => setAppearance(a.id)}
-            >
-              {a.label}
-            </Button>
-          ))}
+      <fieldset className="panel" style={{ marginBottom: 18 }}>
+        <div className="row between wrap">
+          <div className="row wrap" role="radiogroup" aria-label="Avatar appearance">
+            {APPEARANCES.map((a) => (
+              <Button
+                key={a.id}
+                size="sm"
+                variant={appearance === a.id ? "default" : "outline"}
+                role="radio"
+                aria-checked={appearance === a.id}
+                onClick={() => setAppearance(a.id)}
+              >
+                {a.label}
+              </Button>
+            ))}
+          </div>
+          <Button size="sm" variant="outline" onClick={togglePipCam}>
+            <Video size={15} /> {pipCamOn ? "Disable PiP camera" : "Enable PiP camera"}
+          </Button>
         </div>
-        <p className="tiny text-muted">
-          Three.js and the Talking Avatar library load only on this route. Voice-only renders no 3D
-          at all.
-          {!isSpeechRecognitionSupported() &&
-            " Speech recognition needs Chrome; typing works everywhere."}
-        </p>
+        {!speechSupported && (
+          <p className="tiny text-muted" style={{ marginTop: 10 }}>
+            Speech recognition needs Chrome/Edge; typing answers works in every browser.
+          </p>
+        )}
       </fieldset>
 
-      <div className="avatar-grid">
-        <AvatarStage appearance={appearance} pose={pose} />
+      {/* THEATER LAYOUT */}
+      <div className="viv-theater">
+        <div className="viv-spotlight-stage">
+          {/* SMALL GLASS PiP USER CAMERA WINDOW */}
+          <div className="viv-pip-cam" aria-label="Your camera picture-in-picture window">
+            {pipCamOn ? (
+              <video ref={pipVideoRef} playsInline muted autoPlay />
+            ) : (
+              <span>PiP Camera Off</span>
+            )}
+          </div>
+
+          <AvatarStage appearance={appearance} pose={pose} />
+
+          {/* SUBTITLES BELOW AVATAR + THINKING ANIMATED DOTS */}
+          <div
+            className={`viv-subtitles-bar ${pose === "speaking" ? "speaking" : ""}`}
+            aria-live="polite"
+          >
+            {pose === "thinking" ? (
+              <span className="viv-thinking-pill">
+                Viv is thinking
+                <span className="viv-thinking-dots" aria-hidden>
+                  <span className="viv-dot" />
+                  <span className="viv-dot" />
+                  <span className="viv-dot" />
+                </span>
+              </span>
+            ) : (
+              <span>{currentQ.prompt}</span>
+            )}
+          </div>
+        </div>
 
         <section className="panel stack">
-          {currentQ ? (
-            <>
-              <span className="pill">
-                {currentQ.skill} ·{" "}
-                {flow === "thinking"
-                  ? "Viv is thinking of a follow-up…"
-                  : flow === "asking"
-                    ? "Viv is asking…"
+          <div className="row between wrap">
+            <span className="pill">
+              {currentQ.skill} ·{" "}
+              {flow === "thinking"
+                ? "Viv is thinking…"
+                : flow === "asking"
+                  ? "Viv is speaking…"
+                  : flow === "listening"
+                    ? "Listening"
                     : "Your turn"}
-              </span>
-              <h2 className="session-question">{currentQ.prompt}</h2>
-              <div className="voice-transcript" aria-live="polite">
-                <p className="tiny text-muted">Your answer (live transcript)</p>
-                <p>
-                  {live || (
-                    <span className="text-muted">
-                      Press “Answer Viv” — you can interrupt Viv mid-sentence.
-                    </span>
-                  )}
-                </p>
-              </div>
-              <label>
-                Or type / edit
-                <textarea
-                  value={live}
-                  onChange={(e) => setLive(e.target.value)}
-                  rows={3}
-                  placeholder="Your spoken words appear here."
-                />
-              </label>
-              {interruptMs != null && (
-                <p className="tiny text-muted">
-                  Last interrupt: TTS stopped in {interruptMs}ms (budget {INTERRUPT_BUDGET_MS}ms) ·
-                  Viv switched to listening pose.
-                </p>
+            </span>
+            {interruptMs != null && (
+              <span className="tiny text-muted">Barge-in {interruptMs}ms</span>
+            )}
+          </div>
+
+          <div className="voice-transcript-box" aria-live="polite">
+            <span className="tiny text-muted">Your answer (live transcript)</span>
+            <p className="small">
+              {live || (
+                <span className="text-muted">
+                  Press “Answer Viv” to speak — you can interrupt Viv mid-sentence.
+                </span>
               )}
-              <div className="session-actions">
-                <Button variant="outline" onClick={begin}>
-                  Hear question
-                </Button>
-                <Button variant="outline" onClick={startListening}>
-                  <Mic size={16} /> Answer Viv (interrupt)
-                </Button>
-                <Button onClick={submit} disabled={flow === "thinking"}>
-                  {flow === "thinking" ? "Viv is thinking…" : "Submit answer"} <Check size={16} />
-                </Button>
-              </div>
-              <p className="tiny text-muted">
-                Before each follow-up Viv pauses 1–2s looking down, takes natural gaze breaks, and
-                breathes at idle — like a person, not a statue. Scoring stays the disclosed
-                deterministic rubric.
-              </p>
-            </>
-          ) : (
-            <div className="stack">
-              <h2>Interview complete</h2>
-              <p>
-                Average: <b>{voiceSessionScore(entries) ?? "—"}/100</b> · {entries.length} answers
-                with Viv.
-              </p>
-              <div className="row">
-                <Button variant="outline" asChild>
-                  <Link to="/voice-playback/$sessionId" params={{ sessionId }}>
-                    Replay transcript
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild>
-                  <Link to="/voice">Voice-only practice</Link>
-                </Button>
-              </div>
-            </div>
-          )}
+            </p>
+          </div>
+
+          <label>
+            Or type / edit response
+            <textarea
+              value={live}
+              onChange={(e) => setLive(e.target.value)}
+              rows={4}
+              placeholder="Your spoken words appear here."
+            />
+          </label>
+
+          <div className="session-actions">
+            <Button variant="outline" onClick={begin}>
+              Hear question
+            </Button>
+            <Button variant="outline" onClick={startListening}>
+              <Mic size={16} /> Answer Viv
+            </Button>
+            <Button onClick={submit} disabled={flow === "thinking"}>
+              {flow === "thinking" ? "Viv is thinking…" : "Submit answer"} <Check size={16} />
+            </Button>
+          </div>
+          <p className="tiny text-muted">
+            Viv pauses 1–2s looking down before follow-ups, takes natural gaze breaks, and keeps
+            deterministic concept scoring.
+          </p>
 
           {entries.length > 0 && (
             <div className="stack">
-              <h3>With Viv so far</h3>
+              <h3>Answered with Viv</h3>
               {entries.map((e, i) => (
-                <article key={e.id} className="transcript-entry">
+                <article
+                  key={e.id}
+                  style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}
+                >
                   <div className="row between">
                     <span className="pill">
                       Q{i + 1} · {e.skill}
                     </span>
-                    <b>{e.score}/100</b>
+                    <b className="tabular-nums">{e.score}/100</b>
                   </div>
-                  <p className="small">{e.transcript}</p>
+                  <p className="small text-muted" style={{ marginTop: 6 }}>
+                    {e.transcript}
+                  </p>
                 </article>
               ))}
             </div>
           )}
         </section>
       </div>
-
-      <style>{`
-        .avatar-grid{display:grid;grid-template-columns:1fr 1.2fr;gap:16px;align-items:start;margin-top:16px}
-        @media(max-width:900px){.avatar-grid{grid-template-columns:1fr}}
-        .appearance-picker{margin:0}
-        .voice-transcript{background:var(--sidebar);border:1px solid var(--border);border-radius:12px;padding:12px;min-height:64px}
-        .transcript-entry{border-top:1px solid var(--border);padding-top:10px}
-      `}</style>
     </>
   );
 }

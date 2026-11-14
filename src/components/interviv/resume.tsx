@@ -9,6 +9,11 @@ import {
   SAMPLE_RESUME_TEXT,
   type ExtractedResume,
 } from "@/lib/interviv/resume-extractor";
+import {
+  extractResumeDocument,
+  parseResumeTextForRoadmap,
+  syncResumeToSkillGapRoadmap,
+} from "@/lib/interviv/resume-service";
 import { Heading, Icon, ArrowRight, SkillBar, Check } from "./ui";
 import { toast } from "sonner";
 
@@ -35,40 +40,40 @@ export function Resume({ onboarding = false }: { onboarding?: boolean }) {
     return extractResumeProfile(text, data.role, jd);
   }, [text, data.role, jd, data.extractedResume]);
 
-  async function persistExtraction(content: string, jobDesc = jd) {
+  async function persistExtraction(content: string, jobDesc = jd, fileLabel?: string) {
     const profile = extractResumeProfile(content, data.role, jobDesc);
+    const draft = parseResumeTextForRoadmap({
+      rawText: content,
+      targetRole: data.role,
+      source: fileLabel ? "file-upload" : "pasted-text",
+      fileName: fileLabel,
+    });
     setSelected(profile.allSkills);
     setAnalyzed(true);
-    await update({ resume: content, extractedResume: profile });
+    await syncResumeToSkillGapRoadmap({
+      draft,
+      targetRole: data.role,
+      confirmedFullName: profile.contact.name,
+      confirmedSkills: profile.allSkills,
+      confirmedRoles: draft.history.roles,
+      updateWorkspace: async (patch) => {
+        await update({
+          ...patch,
+          extractedResume: profile,
+        });
+      },
+    });
     return profile;
   }
 
   async function read(file: File) {
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("Choose a file smaller than 10 MB.");
-      return;
-    }
     setBusy(true);
     try {
-      let content = "";
-      if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-        const pdfjs = await import("pdfjs-dist");
-        const worker = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
-        pdfjs.GlobalWorkerOptions.workerSrc = worker;
-        const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-        for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
-          const page = await pdf.getPage(i);
-          const t = await page.getTextContent();
-          content += t.items.map((item) => ("str" in item ? item.str : "")).join(" ") + "\n";
-        }
-      } else {
-        content = await file.text();
-      }
-      if (!content.trim()) throw new Error("No readable text found. Paste your resume text below.");
-      setText(content);
-      setFilename(file.name);
-      const profile = await persistExtraction(content);
-      toast.success(`Extracted ${profile.allSkills.length} skills from ${file.name}.`);
+      const doc = await extractResumeDocument(file);
+      setText(doc.rawText);
+      setFilename(doc.fileName);
+      const profile = await persistExtraction(doc.rawText, jd, doc.fileName);
+      toast.success(`Extracted ${profile.allSkills.length} skills from ${doc.fileName}.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not read this file.");
     } finally {

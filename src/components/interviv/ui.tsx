@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  ArrowUp,
   ArrowUpRight,
   Mic,
   Code2,
@@ -26,6 +27,13 @@ import {
   Volume2,
   Play,
   RotateCcw,
+  Sun,
+  Moon,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Video,
+  Bot,
 } from "lucide-react";
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
@@ -34,9 +42,17 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useWorkspace } from "@/lib/interviv/workspace";
 import { supabase } from "@/integrations/supabase/client";
 import { companies } from "@/lib/interviv/data";
+import {
+  THEME_STORAGE_KEY,
+  resolveTheme,
+  toggleResolvedTheme,
+  type ResolvedTheme,
+} from "@/lib/interviv/landing-and-theme";
 import { toast } from "sonner";
+
 export {
   ArrowRight,
+  ArrowUp,
   ArrowUpRight,
   Mic,
   Code2,
@@ -54,7 +70,14 @@ export {
   Volume2,
   Play,
   RotateCcw,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Video,
+  Bot,
+  FileText,
 };
+
 export function Icon({ name }: { name: string }) {
   const icons: Record<string, typeof Mic> = {
     mic: Mic,
@@ -65,10 +88,14 @@ export function Icon({ name }: { name: string }) {
     spark: Sparkles,
     target: Target,
     chart: ChartNoAxesCombined,
+    video: Video,
+    bot: Bot,
+    file: FileText,
   };
   const C = icons[name] ?? Sparkles;
   return <C />;
 }
+
 export function Brand() {
   return (
     <Link to="/" className="brand">
@@ -79,6 +106,7 @@ export function Brand() {
     </Link>
   );
 }
+
 export function Heading({
   eyebrow,
   title,
@@ -101,6 +129,7 @@ export function Heading({
     </header>
   );
 }
+
 export function Metric({
   label,
   value,
@@ -128,27 +157,77 @@ export function Metric({
     </div>
   );
 }
+
 export function SkillBar({ label, value, note }: { label: string; value: number; note?: string }) {
+  const clamped = Math.max(0, Math.min(100, value));
   return (
     <div className="skill-line">
       <div className="row between">
         <span>{label}</span>
-        <span className="text-muted tabular-nums">{note ?? `${value}%`}</span>
+        <span className="text-muted tabular-nums">{note ?? `${clamped}%`}</span>
       </div>
-      <progress max={100} value={value} />
+      <div
+        className="skill-track"
+        role="progressbar"
+        aria-valuenow={clamped}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={label}
+      >
+        <div className="skill-fill" style={{ width: `${clamped}%` }} />
+      </div>
     </div>
   );
 }
+
+/**
+ * Dark mode is default across InterViv; this toggle lets users switch cleanly between dark and light.
+ */
+function ThemeToggle() {
+  const [theme, setTheme] = useState<ResolvedTheme>("dark");
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    const next = resolveTheme(stored);
+    document.documentElement.classList.toggle("dark", next === "dark");
+    document.documentElement.dataset["theme"] = next;
+    setTheme(next);
+  }, []);
+
+  function handleToggle() {
+    const next = toggleResolvedTheme(theme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, next);
+    document.documentElement.classList.toggle("dark", next === "dark");
+    document.documentElement.dataset["theme"] = next;
+    setTheme(next);
+  }
+
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      onClick={handleToggle}
+      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+      aria-pressed={theme === "dark"}
+      title={`Current theme: ${theme}`}
+    >
+      {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+      <span className="theme-label">{theme === "dark" ? "Light" : "Dark"}</span>
+    </button>
+  );
+}
+
 const mainNav = [
   { to: "/", title: "Overview", icon: LayoutGrid },
   { to: "/practice", title: "Practice", icon: Mic },
   { to: "/progress", title: "My progress", icon: ChartNoAxesCombined },
   { to: "/roadmap", title: "My roadmap", icon: Map },
 ] as const;
+
 const toolsNav = [
   { to: "/voice", title: "Voice interview", icon: Mic },
-  { to: "/engagement", title: "Engagement analyzer", icon: ChartNoAxesCombined },
-  { to: "/avatar", title: "Interview with Viv", icon: Sparkles },
+  { to: "/engagement", title: "Engagement analyzer", icon: Video },
+  { to: "/avatar", title: "Interview with Viv", icon: Bot },
   { to: "/adaptive", title: "Adaptive learning", icon: Target },
   { to: "/resume", title: "Resume extractor", icon: FileText },
   { to: "/problems", title: "Coding & SQL arena", icon: Code2 },
@@ -158,6 +237,7 @@ const toolsNav = [
   { to: "/resources", title: "Learning library", icon: BookOpen },
   { to: "/coach", title: "AI coach", icon: Sparkles },
 ] as const;
+
 export function AppShell({ children }: { children: ReactNode }) {
   const path = useLocation().pathname;
   const router = useRouter();
@@ -165,7 +245,22 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [palette, setPalette] = useState(false);
   const [search, setSearch] = useState("");
+  const [scrolled, setScrolled] = useState(false);
+  const [showTopBtn, setShowTopBtn] = useState(false);
+
   const title = [...mainNav, ...toolsNav].find((n) => n.to === path)?.title ?? "Your workspace";
+
+  useEffect(() => {
+    const onScroll = () => {
+      const y = window.scrollY;
+      setScrolled(y > 24);
+      setShowTopBtn(y > 360);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -176,6 +271,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
   async function signout() {
     await router.options.context.queryClient.cancelQueries();
     router.options.context.queryClient.clear();
@@ -183,6 +279,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.dispatchEvent(new Event("interviv-auth"));
     await router.navigate({ to: "/auth", replace: true });
   }
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${open ? "open" : ""}`} aria-label="Workspace navigation">
@@ -214,7 +311,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
-        <div className="nav-label">Readiness toolkit</div>
+        <div className="nav-label">Interview modes</div>
         <nav className="nav-list">
           {toolsNav.map((n) => (
             <Link
@@ -231,10 +328,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="sidebar-bottom">
           <div className="coach-nudge">
             <Sparkles size={18} />
-            <h4>Need a clear plan?</h4>
+            <h4>Need a study plan?</h4>
             <p>Turn a role target or job description into a focused weekly roadmap.</p>
             <Link className="text-link" to="/coach" onClick={() => setOpen(false)}>
-              Ask your coach <ArrowRight />
+              Open AI coach <ArrowRight />
             </Link>
           </div>
           <div className="profile">
@@ -247,9 +344,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
             <div>
               <b>
-                {user ? user.user_metadata["display_name"] || "Your workspace" : "Guest workspace"}
+                {user ? user.user_metadata["display_name"] || "Your workspace" : "Personal preview"}
               </b>
-              <small>{user ? "Signed in · Saved" : "No account needed to browse"}</small>
+              <small>{user ? "Signed in · Synced" : "No account needed to explore"}</small>
             </div>
             {user && (
               <Button
@@ -265,24 +362,28 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </aside>
+
       <div className="workspace-body">
-        <header className="topbar">
+        <header className={`topbar ${scrolled ? "scrolled" : ""}`}>
           <div className="row">
             <Button
               size="icon"
               variant="ghost"
               className="mobile-toggle"
               aria-label={open ? "Close navigation" : "Open navigation"}
+              aria-expanded={open}
               onClick={() => setOpen(!open)}
             >
               {open ? <X /> : <Menu />}
             </Button>
             <div className="breadcrumb">
-              Workspace <b>/ &nbsp; {title}</b>
+              <span className="breadcrumb-prefix">Workspace / &nbsp;</span>
+              <b>{title}</b>
             </div>
           </div>
           <div className="top-actions">
-            <span className="demo-status">{user ? "Personal workspace" : "Browsing mode"}</span>
+            <span className="demo-status">{user ? "Synced session" : "Local preview"}</span>
+            <ThemeToggle />
             <Button
               size="sm"
               variant="outline"
@@ -292,7 +393,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               onClick={() => setPalette(true)}
             >
               <Search size={14} />
-              <span>Jump</span>
+              <span className="jump-label">Jump</span>
               <kbd>⌘K</kbd>
             </Button>
             {ready && !user && (
@@ -304,21 +405,45 @@ export function AppShell({ children }: { children: ReactNode }) {
             )}
           </div>
         </header>
+
         <main className="main-content">
           {children}
           <footer className="app-footer">
-            <span>InterViv — Deterministic interview readiness & career prep</span>
-            <span>Practice · Resume extractor · Coding & SQL arena</span>
+            <div>
+              <strong>InterViv</strong> — Personal AI interview preparation workspace.
+            </div>
+            <div className="footer-links">
+              <Link to="/voice">Voice</Link>
+              <Link to="/avatar">Viv Avatar</Link>
+              <Link to="/problems">Coding & SQL</Link>
+              <Link to="/resume">Resume</Link>
+              <Link to="/learn">Spaced Repetition</Link>
+            </div>
           </footer>
         </main>
       </div>
+
+      {showTopBtn && (
+        <div className="floating-actions no-print">
+          <button
+            type="button"
+            className="fab-top"
+            aria-label="Scroll back to top"
+            title="Scroll to top"
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          >
+            <ArrowUp size={18} />
+          </button>
+        </div>
+      )}
+
       <Dialog open={palette} onOpenChange={setPalette}>
         <DialogContent>
           <DialogTitle>Jump to a workspace tool</DialogTitle>
           <input
             autoFocus
             aria-label="Search pages"
-            placeholder="Type a page or feature (e.g., resume, coding, SQL, roadmap)…"
+            placeholder="Type a page or feature (e.g., voice, Viv, resume, coding, SQL)…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -346,6 +471,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
 export function TargetDialog({
   open,
   onOpenChange,
@@ -421,6 +547,7 @@ export function TargetDialog({
     </Dialog>
   );
 }
+
 export function AuthPrompt() {
   return (
     <div className="notice row between wrap">
