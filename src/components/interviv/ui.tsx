@@ -146,6 +146,7 @@ const mainNav = [
   { to: "/roadmap", title: "My roadmap", icon: Map },
 ] as const;
 const toolsNav = [
+  { to: "/voice", title: "Voice interview", icon: Mic },
   { to: "/resume", title: "Resume extractor", icon: FileText },
   { to: "/problems", title: "Coding & SQL arena", icon: Code2 },
   { to: "/learn", title: "Spaced repetition", icon: GraduationCap },

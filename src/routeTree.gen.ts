@@ -26,8 +26,10 @@ import { Route as ResumeRouteImport } from './routes/resume'
 import { Route as RoadmapRouteImport } from './routes/roadmap'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as UploadRouteImport } from './routes/upload'
+import { Route as VoiceRouteImport } from './routes/voice'
 import { Route as DashboardSessionIdRouteImport } from './routes/dashboard.$sessionId'
 import { Route as SessionSessionIdRouteImport } from './routes/session.$sessionId'
+import { Route as VoicePlaybackSessionIdRouteImport } from './routes/voice-playback.$sessionId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -114,6 +116,11 @@ const UploadRoute = UploadRouteImport.update({
   path: '/upload',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VoiceRoute = VoiceRouteImport.update({
+  id: '/voice',
+  path: '/voice',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardSessionIdRoute = DashboardSessionIdRouteImport.update({
   id: '/dashboard/$sessionId',
   path: '/dashboard/$sessionId',
@@ -122,6 +129,11 @@ const DashboardSessionIdRoute = DashboardSessionIdRouteImport.update({
 const SessionSessionIdRoute = SessionSessionIdRouteImport.update({
   id: '/session/$sessionId',
   path: '/session/$sessionId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VoicePlaybackSessionIdRoute = VoicePlaybackSessionIdRouteImport.update({
+  id: '/voice-playback/$sessionId',
+  path: '/voice-playback/$sessionId',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -143,8 +155,10 @@ export interface FileRoutesByFullPath {
   '/roadmap': typeof RoadmapRoute
   '/signup': typeof SignupRoute
   '/upload': typeof UploadRoute
+  '/voice': typeof VoiceRoute
   '/dashboard/$sessionId': typeof DashboardSessionIdRoute
   '/session/$sessionId': typeof SessionSessionIdRoute
+  '/voice-playback/$sessionId': typeof VoicePlaybackSessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -164,8 +178,10 @@ export interface FileRoutesByTo {
   '/roadmap': typeof RoadmapRoute
   '/signup': typeof SignupRoute
   '/upload': typeof UploadRoute
+  '/voice': typeof VoiceRoute
   '/dashboard/$sessionId': typeof DashboardSessionIdRoute
   '/session/$sessionId': typeof SessionSessionIdRoute
+  '/voice-playback/$sessionId': typeof VoicePlaybackSessionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -186,8 +202,10 @@ export interface FileRoutesById {
   '/roadmap': typeof RoadmapRoute
   '/signup': typeof SignupRoute
   '/upload': typeof UploadRoute
+  '/voice': typeof VoiceRoute
   '/dashboard/$sessionId': typeof DashboardSessionIdRoute
   '/session/$sessionId': typeof SessionSessionIdRoute
+  '/voice-playback/$sessionId': typeof VoicePlaybackSessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -209,8 +227,10 @@ export interface FileRouteTypes {
     | '/roadmap'
     | '/signup'
     | '/upload'
+    | '/voice'
     | '/dashboard/$sessionId'
     | '/session/$sessionId'
+    | '/voice-playback/$sessionId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -230,8 +250,10 @@ export interface FileRouteTypes {
     | '/roadmap'
     | '/signup'
     | '/upload'
+    | '/voice'
     | '/dashboard/$sessionId'
     | '/session/$sessionId'
+    | '/voice-playback/$sessionId'
   id:
     | '__root__'
     | '/'
@@ -251,8 +273,10 @@ export interface FileRouteTypes {
     | '/roadmap'
     | '/signup'
     | '/upload'
+    | '/voice'
     | '/dashboard/$sessionId'
     | '/session/$sessionId'
+    | '/voice-playback/$sessionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -273,8 +297,10 @@ export interface RootRouteChildren {
   RoadmapRoute: typeof RoadmapRoute
   SignupRoute: typeof SignupRoute
   UploadRoute: typeof UploadRoute
+  VoiceRoute: typeof VoiceRoute
   DashboardSessionIdRoute: typeof DashboardSessionIdRoute
   SessionSessionIdRoute: typeof SessionSessionIdRoute
+  VoicePlaybackSessionIdRoute: typeof VoicePlaybackSessionIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -398,6 +424,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UploadRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/voice': {
+      id: '/voice'
+      path: '/voice'
+      fullPath: '/voice'
+      preLoaderRoute: typeof VoiceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard/$sessionId': {
       id: '/dashboard/$sessionId'
       path: '/dashboard/$sessionId'
@@ -410,6 +443,13 @@ declare module '@tanstack/react-router' {
       path: '/session/$sessionId'
       fullPath: '/session/$sessionId'
       preLoaderRoute: typeof SessionSessionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/voice-playback/$sessionId': {
+      id: '/voice-playback/$sessionId'
+      path: '/voice-playback/$sessionId'
+      fullPath: '/voice-playback/$sessionId'
+      preLoaderRoute: typeof VoicePlaybackSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -433,8 +473,10 @@ const rootRouteChildren: RootRouteChildren = {
   RoadmapRoute: RoadmapRoute,
   SignupRoute: SignupRoute,
   UploadRoute: UploadRoute,
+  VoiceRoute: VoiceRoute,
   DashboardSessionIdRoute: DashboardSessionIdRoute,
   SessionSessionIdRoute: SessionSessionIdRoute,
+  VoicePlaybackSessionIdRoute: VoicePlaybackSessionIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
